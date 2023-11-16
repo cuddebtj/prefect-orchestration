@@ -1,0 +1,238 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prefect-orchestration"
+dynamic = ["version"]
+description = ''
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Tim Cuddeback", email = "cuddebtj@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "prefect",
+  "prefect-gcp",
+  "yahoo-export",
+  "yahoo-parser",
+  "psycopg[binary]",
+]
+
+[project.urls]
+Documentation = "https://github.com/unknown/prefect-orchestration#readme"
+Issues = "https://github.com/unknown/prefect-orchestration/issues"
+Source = "https://github.com/unknown/prefect-orchestration"
+
+[tool.hatch.version]
+path = "src/prefect_orchestration/__about__.py"
+
+[tool.hatch.envs.test]
+dependencies = [
+  "coverage[toml]",
+  "pytest",
+  "pytest-cov"
+]
+[tool.hatch.envs.test.scripts]
+test = "pytest {args:tests}"
+test-cov = "coverage run -m pytest {args:tests}"
+cov-report = [
+  "- coverage combine",
+  "coverage report",
+]
+cov = [
+  "test-cov",
+  "cov-report",
+]
+
+[[tool.hatch.envs.all.matrix]]
+python = ["3.11"]
+
+[tool.hatch.envs.lint]
+detached = true
+dependencies = [
+  "black",
+  "pyright",
+  "ruff",
+  "bandit[toml]",
+]
+[tool.hatch.envs.lint.scripts]
+typing = "pyright /src/prefect_orchestration/."
+style = [
+  "ruff {args:.}",
+  "black --check --diff {args:.}",
+  "bandit -c pyproject.toml -r"
+]
+fmt = [
+  "black {args:.}",
+  "ruff --fix {args:.}",
+  "style",
+]
+all = [
+  "style",
+  "typing",
+]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/dist",
+  "/secrets",
+  "/yahoo_parser_config.yaml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prefect_orchestration"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "1.0.1"
+version_files = [
+    "src/prefect_orchestration/__about__.py",
+    "pyproject.toml:version"
+]
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "pep621"
+bump_message = "bump: version $current_version → $new_version"
+update_changelog_on_bump = true
+changelog_incremental = true
+annotated_tag = true
+
+[tool.black]
+target-version = ["py311"]
+line-length = 120
+skip-string-normalization = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C",
+  "DTZ",
+  "E",
+  "EM",
+  "F",
+  "FBT",
+  "I",
+  "ICN",
+  "ISC",
+  "N",
+  "PLC",
+  "PLE",
+  "PLR",
+  "PLW",
+  "Q",
+  "RUF",
+  "S",
+  "T",
+  "TID",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = [
+  # Allow non-abstract empty methods in abstract base classes
+  "B027",
+  # Allow boolean positional values in function calls, like `dict.get(... True)`
+  "FBT003",
+  # Ignore checks for possible passwords
+  "S105", "S106", "S107",
+  # Ignore complexity
+  "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
+]
+unfixable = [
+  # Don't touch unused imports
+  "F401",
+]
+
+[tool.ruff.isort]
+known-first-party = ["prefect_orchestration"]
+
+[tool.ruff.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.per-file-ignores]
+# Tests can use magic values, assertions, and relative imports
+"tests/**/*" = ["PLR2004", "S101", "TID252"]
+"__init__.py" = ["E402", "F401"]
+
+[tool.bandit]
+exclude_dirs = [
+    "tests",
+    "data_cache",
+]
+
+[tool.bandit.any_other_function_with_shell_equals_true]
+no_shell = [
+  "os.execl",
+  "os.execle",
+  "os.execlp",
+  "os.execlpe",
+  "os.execv",
+  "os.execve",
+  "os.execvp",
+  "os.execvpe",
+  "os.spawnl",
+  "os.spawnle",
+  "os.spawnlp",
+  "os.spawnlpe",
+  "os.spawnv",
+  "os.spawnve",
+  "os.spawnvp",
+  "os.spawnvpe",
+  "os.startfile"
+]
+shell = [
+  "os.system",
+  "os.popen",
+  "os.popen2",
+  "os.popen3",
+  "os.popen4",
+  "popen2.popen2",
+  "popen2.popen3",
+  "popen2.popen4",
+  "popen2.Popen3",
+  "popen2.Popen4",
+  "commands.getoutput",
+  "commands.getstatusoutput"
+]
+subprocess = [
+  "subprocess.Popen",
+  "subprocess.call",
+  "subprocess.check_call",
+  "subprocess.check_output"
+]
+
+[tool.coverage.run]
+source_pkgs = ["prefect_orchestration", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/prefect_orchestration/__about__.py",
+]
+
+[tool.coverage.paths]
+yahoo_parser = ["src/prefect_orchestration", "*/prefect-orchestration/src/prefect_orchestration"]
+tests = ["tests", "*/prefect-orchestration/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
