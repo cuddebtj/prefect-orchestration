@@ -1,7 +1,6 @@
 import json
 import logging
 import math
-from msilib import schema
 import os
 from collections import deque
 from collections.abc import Callable, Generator
@@ -238,7 +237,7 @@ def get_parameters(
     current_date = current_date if current_date else datetime.now(timezone("UTC"))
     consumer_key = consumer_key if consumer_key else SecretStr(os.getenv("YAHOO_CONSUMER_KEY"))  # type: ignore
     consumer_secret = consumer_secret if consumer_secret else SecretStr(os.getenv("YAHOO_CONSUMER_SECRET"))  # type: ignore
-    db_conn_uri = db_conn_uri if db_conn_uri else os.getenv("POSTGRES_CONN")  # type: ignore
+    db_conn_uri = db_conn_uri if db_conn_uri else os.getenv("LOCAL_POSTGRES_CONN")  # type: ignore
     num_of_teams = num_of_teams if num_of_teams else 10
 
     db_conn_params = DatabaseParameters(

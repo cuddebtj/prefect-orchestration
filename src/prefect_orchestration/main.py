@@ -1,5 +1,7 @@
+import os
 from datetime import datetime
 
+from dotenv import load_dotenv
 from polars import DataFrame
 from prefect import flow
 from prefect.blocks.system import Secret
@@ -23,6 +25,10 @@ from prefect_orchestration.modules.utils import (
     parse_response,
     split_pipelines,
 )
+
+load_dotenv()
+
+ENV_STATUS = os.getenv("ENVIRONMENT", "local")
 
 
 @flow(on_failure=[notify_discord])
@@ -128,11 +134,15 @@ def load_pipeline_list(
     num_of_teams: int,
 ) -> tuple[list[PipelineConfiguration], list[PipelineConfiguration] | None, list[PipelineConfiguration] | None]:
     try:
+        db_conn_uri = (
+            os.getenv("SUPABASE_CONN_URI_YAHOO") if ENV_STATUS == "local" else Secret.load("supabase-conn-uri").get()  # type: ignore
+        )
+
         flow_params = get_parameters(
             current_date=current_date,
             consumer_key=None,
             consumer_secret=None,
-            db_conn_uri=Secret.load("supabase-conn-uri").get(),  # type: ignore
+            db_conn_uri=db_conn_uri,
             num_of_teams=num_of_teams,
             season=season,
             game_id=game_id,
@@ -154,10 +164,12 @@ def load_pipeline_list(
 @flow(on_failure=[notify_discord])
 def extract_transform_load(pipeline_config: PipelineConfiguration) -> bool:
     try:
-        resp, query_ts, data_parser, end_point = extract_data(pipeline_config)
+        resp, _, data_parser, end_point = extract_data(pipeline_config)
 
         pipeline_config.pipeline_params.db_params.schema_name = "yahoo_json"
-        load_raw = load_raw_data(data_dict=resp, params_dict=pipeline_config.pipeline_params, columns=["yahoo_json"])
+        load_raw = load_raw_data(  # noqa: F841
+            data_dict=resp, params_dict=pipeline_config.pipeline_params, columns=["yahoo_json"]
+        )
 
         dict_of_data = parse_data(data_parser=data_parser, end_point=end_point)
         pipeline_config.pipeline_params.db_params.schema_name = "yahoo_data"
@@ -165,13 +177,13 @@ def extract_transform_load(pipeline_config: PipelineConfiguration) -> bool:
         for table_name, table_df in dict_of_data.items():
             pipeline_config.pipeline_params.db_params.table_name = table_name
             load_parse.append(
-                load_parsed_data.submit(
+                load_parsed_data.submit(  # type: ignore
                     data_df=table_df,
                     params_dict=pipeline_config.pipeline_params,
                 )
             )
 
-        parsed_load = [i for p in load_parse for i in p.result()]
+        parsed_load = [i for p in load_parse for i in p.result()]  # noqa: F841
         return True
 
     except Exception as e:
@@ -202,53 +214,81 @@ def main_yahoo_flow(
             for chunk_one, chunk_two, chunk_three in zip(
                 pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
             ):
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(
-                    Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
                 )
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(
-                    Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
                 )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_one
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_one
                 chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
                 get_file_from_bucket("oauth_token_one.yaml")
                 pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
                 pipelines.append(pipe_one)
 
-                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(
-                    Secret.load("yahoo-consumer-key-two").get()  # type: ignore
+                key_two = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
                 )
-                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(
-                    Secret.load("yahoo-consumer-secret-two").get()  # type: ignore
+                secret_two = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-two").get()  # type: ignore
                 )
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_two
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_two
                 chunk_two.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_two.yaml"
+
                 get_file_from_bucket("oauth_token_two.yaml")
                 pipe_two = extract_transform_load.submit(chunk_two)  # type: ignore
                 pipelines.append(pipe_two)
 
-                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(
-                    Secret.load("yahoo-consumer-key-three").get()  # type: ignore
+                key_three = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
                 )
-                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(
-                    Secret.load("yahoo-consumer-secret-three").get()  # type: ignore
+                secret_three = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_THREE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-three").get()  # type: ignore
                 )
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_three
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_three
                 chunk_three.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_three.yaml"
+
                 get_file_from_bucket("oauth_token_three.yaml")
                 pipe_three = extract_transform_load.submit(chunk_three)  # type: ignore
                 pipelines.append(pipe_three)
 
         else:
             for chunk_one in pipeline_chunks[0]:
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(
-                    Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
                 )
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(
-                    Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
                 )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_one
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_one
                 chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
                 get_file_from_bucket("oauth_token_one.yaml")
                 pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
                 pipelines.append(pipe_one)
 
-        all_pipelines = [i for p in pipelines for i in p.result()]
+        all_pipelines = [i for p in pipelines for i in p.result()]  # noqa: F841
 
         return True
 

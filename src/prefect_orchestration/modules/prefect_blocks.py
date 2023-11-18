@@ -52,7 +52,7 @@ def notify_discord(flow, flow_run, state):
 
 ### Parameters:{flow_parameters}
 """
-    discord_webhook_block.notify(
+    discord_webhook_block.notify(  # type: ignore
         body.format(
             flow_name=flow.name,
             flow_tags="\n- ".join(flow.tags),
