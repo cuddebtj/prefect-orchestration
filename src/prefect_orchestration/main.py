@@ -156,11 +156,11 @@ def extract_transform_load(pipeline_config: PipelineConfiguration) -> bool:
     try:
         resp, query_ts, data_parser, end_point = extract_data(pipeline_config)
 
-        pipeline_config.pipeline_params.db_params.schema_name = "raw"
-        load_raw = load_raw_data(data_dict=resp, params_dict=pipeline_config.pipeline_params, columns=["raw_json"])
+        pipeline_config.pipeline_params.db_params.schema_name = "yahoo_json"
+        load_raw = load_raw_data(data_dict=resp, params_dict=pipeline_config.pipeline_params, columns=["yahoo_json"])
 
         dict_of_data = parse_data(data_parser=data_parser, end_point=end_point)
-        pipeline_config.pipeline_params.db_params.schema_name = "public"
+        pipeline_config.pipeline_params.db_params.schema_name = "yahoo_data"
         load_parse = []
         for table_name, table_df in dict_of_data.items():
             pipeline_config.pipeline_params.db_params.table_name = table_name

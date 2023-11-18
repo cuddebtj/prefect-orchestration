@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+from msilib import schema
 import os
 from collections import deque
 from collections.abc import Callable, Generator
@@ -188,7 +189,7 @@ def get_team_key_list(league_key: str, num_teams: int) -> list[str]:
 
 @task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=7))
 def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
-    sql_str = "select distinct player_key from public.players where league_key = %s"
+    sql_str = "select distinct player_key from yahoo_data.players where league_key = %s"
     sql_query = sql.SQL(sql_str).format(sql.Literal(pipeline_params.league_key))
     player_key_list = get_data_from_db(
         pipeline_params.db_params.db_conn_uri, sql_query, pipeline_params.db_params.schema_name  # type: ignore
@@ -199,7 +200,7 @@ def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
 @task
 def get_week(conn_str: str, game_id: int | str, _date: date, schema_name: str) -> int:
     sql_str = (
-        "select distinct game_week from public.game_weeks "
+        "select distinct game_week from yahoo_data.game_weeks "
         "where game_id = %s and %s::date between game_week_start::date and game_week_end::date;"
     )
     sql_query = sql.SQL(sql_str).format(sql.Literal(game_id), sql.Literal(_date))
@@ -231,7 +232,7 @@ def get_parameters(
     season: int = 2023,
     game_id: int = 423,
     league_id: int = 127732,
-    schema_name: str = "public",
+    schema_name: str = "yahoo_data",
     table_name: str = "test",
 ) -> PipelineParameters:
     current_date = current_date if current_date else datetime.now(timezone("UTC"))
@@ -589,23 +590,25 @@ def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str]) 
     file_buffer.seek(0)
 
     conn = psycopg.connect(params_dict.db_params.db_conn_uri)
-    schema_name = params_dict.db_params.schema_name
+    # schema_name = params_dict.db_params.schema_name
+    schema_name = "yahoo_data"
 
     logger.info("Connection to postgres database successful.")
 
     try:
         curs = conn.cursor()
 
-        if schema_name != "":
-            sql_search = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-            curs.execute(sql_search)
-        if columns:
-            copy_str = "COPY {0} ({1}) FROM STDIN"
-            column_names = [sql.Identifier(col) for col in columns] if columns else ""
-            copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name), *column_names)  # type: ignore
-        else:
-            copy_str = "COPY {0} FROM STDIN"
-            copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name))  # type: ignore
+        sql_search = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+        curs.execute(sql_search)
+
+        # if columns:
+        copy_str = "COPY {0} ({1}) FROM STDIN"
+        # column_names = [sql.Identifier(col) for col in columns] if columns else ""
+        column_names = [sql.Identifier("yahoo_json")]
+        copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name), *column_names)  # type: ignore
+        # else:
+        #     copy_str = "COPY {0} FROM STDIN"
+        #     copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name))  # type: ignore
 
         with curs.copy(copy_query) as copy:
             copy.write(file_buffer.read())
@@ -626,10 +629,11 @@ def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str]) 
 
 @task
 def df_to_db(data_df: DataFrame, params_dict: PipelineParameters) -> None:
-    table_name = (
-        f"{params_dict.db_params.schema_name}.{params_dict.db_params.table_name}"
-        if params_dict.db_params.schema_name
-        else params_dict.db_params.table_name
-    )
+    # table_name = (
+    #     f"{params_dict.db_params.schema_name}.{params_dict.db_params.table_name}"
+    #     if params_dict.db_params.schema_name
+    #     else params_dict.db_params.table_name
+    # )
+    table_name = f"yahoo_data.{params_dict.db_params.table_name}"
     data_df.write_database(table_name=table_name, connection=params_dict.db_params.db_conn_uri, engine="adbc")  # type: ignore
     logger.info("Dataframe successfully appended to database.")
