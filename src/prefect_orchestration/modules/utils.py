@@ -53,7 +53,7 @@ class PipelineParameters:
     yahoo_export_config: YahooConfigBlock
     db_params: DatabaseParameters
     num_of_teams: int | None
-    current_date: date | None
+    current_date: datetime | None
 
     def __post_init__(self):
         self.current_date = self.current_date if self.current_date else datetime.now(tz=timezone("UTC"))
@@ -72,7 +72,7 @@ class PipelineParameters:
             else get_week(
                 self.db_params.db_conn_uri,  # type: ignore
                 self.game_id,
-                self.current_date,
+                self.current_date.date(),
                 self.db_params.db_conn_uri.schema_name,  # type: ignore
             )
         )
@@ -197,12 +197,12 @@ def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
 
 
 @task
-def get_week(conn_str: str, game_id: int | str, date: date, schema_name: str) -> int:
+def get_week(conn_str: str, game_id: int | str, _date: date, schema_name: str) -> int:
     sql_str = (
         "select distinct game_week from public.game_weeks "
         "where game_id = %s and %s::date between game_week_start::date and game_week_end::date;"
     )
-    sql_query = sql.SQL(sql_str).format(sql.Literal(game_id), sql.Literal(date))
+    sql_query = sql.SQL(sql_str).format(sql.Literal(game_id), sql.Literal(_date))
     current_week = get_data_from_db(conn_str, sql_query, schema_name)  # type: ignore
     current_week = 0 if not current_week else current_week[0]
     return int(current_week)
@@ -234,7 +234,7 @@ def get_parameters(
     schema_name: str = "public",
     table_name: str = "test",
 ) -> PipelineParameters:
-    current_date = current_date if current_date else datetime.now(timezone("US/Eastern"))
+    current_date = current_date if current_date else datetime.now(timezone("UTC"))
     consumer_key = consumer_key if consumer_key else SecretStr(os.getenv("YAHOO_CONSUMER_KEY"))  # type: ignore
     consumer_secret = consumer_secret if consumer_secret else SecretStr(os.getenv("YAHOO_CONSUMER_SECRET"))  # type: ignore
     db_conn_uri = db_conn_uri if db_conn_uri else os.getenv("POSTGRES_CONN")  # type: ignore
@@ -267,7 +267,7 @@ def get_parameters(
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     current_week = pipeline_params.current_week  # type: ignore
-    current_date = pipeline_params.current_date  # type: ignore
+    current_date = pipeline_params.current_date.date()  # type: ignore
     preseason_end_points = [
         "get_game",
         "get_league_preseason",
@@ -293,9 +293,9 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     FRIDAY = 4  # noqa: N806
     SATURDAY = 5  # noqa: N806
     SUNDAY = 6  # noqa: N806
-    SEPTEMBER_FIRST = datetime(current_date.year, 9, 1, tzinfo=timezone("US/Eastern"))  # noqa: N806 # type: ignore
-    JUNE_FIRST = datetime(current_date.year, 6, 1, tzinfo=timezone("US/Eastern"))  # noqa: N806 # type: ignore
-    MARCH_FIRST = datetime(current_date.year, 3, 1, tzinfo=timezone("US/Eastern"))  # noqa: N806 # type: ignore
+    SEPTEMBER_FIRST = datetime(current_date.year, 9, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
+    JUNE_FIRST = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
+    MARCH_FIRST = datetime(current_date.year, 3, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
     OFFSEASON_WEEK = 0  # noqa: N806
     LAST_REGULAR_SEASON_WEEK = 15  # noqa: N806
     LAST_WEEK = 18  # noqa: N806

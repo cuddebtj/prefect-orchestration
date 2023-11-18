@@ -19,14 +19,14 @@ pull:
 
 # the deployments section allows you to provide configuration for deploying flows
 deployments:
-- name: null
+- name: export-yahoo-data
   version: null
   tags: []
   description: null
   schedule: {}
-  flow_name: null
-  entrypoint: null
-  parameters: {}
+  flow_name: main_yahoo_flow
+  entrypoint: /home/cudde-admin/projects/development/men_of_madison_ffbl/prefect-orchestration/src/prefect_orchestration/main.py:main_yahoo_flow
+  parameters: {"current_date": datetime.now(tz=timezone("UTC"))}
   work_pool:
     name: null
     work_queue_name: null
