@@ -338,6 +338,7 @@ def get_parameters(
         current_nfl_week=0,
         current_nfl_season=season,
         league_info={"season": season, "game_id": game_id, "league_id": league_id},
+        validate=False,
     )
 
     pipeline_params = PipelineParameters(

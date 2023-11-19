@@ -187,7 +187,233 @@ def extract_transform_load(pipeline_config: PipelineConfiguration) -> bool:
 
 
 @flow(on_failure=[notify_discord])
-def main_yahoo_flow(
+def sunday_yahoo_flow(
+    current_date: datetime,
+    season: int = 2023,
+    game_id: int = 423,
+    league_id: int = 127732,
+    schema_name: str = "yahoo",
+    num_of_teams: int = 10,
+) -> bool:
+    try:
+        pipeline_chunks = load_pipeline_list(
+            current_date,
+            season,
+            game_id,
+            league_id,
+            schema_name,
+            num_of_teams,
+        )
+        pipelines = []
+        db_conn_uri = (
+            os.getenv("SUPABASE_CONN_URI_YAHOO") if ENV_STATUS == "local" else Secret.load("supabase-conn-uri").get()  # type: ignore
+        )
+
+        if pipeline_chunks[1] and pipeline_chunks[2]:
+            for chunk_one, chunk_two, chunk_three in zip(
+                pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
+            ):
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                )
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
+                get_file_from_bucket("oauth_token_one.yaml")
+                pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
+                pipelines.append(pipe_one)
+
+                key_two = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
+                )
+                secret_two = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-two").get()  # type: ignore
+                )
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_two)  # type: ignore
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_two)  # type: ignore
+                chunk_two.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_two.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_two.yaml"
+
+                get_file_from_bucket("oauth_token_two.yaml")
+                pipe_two = extract_transform_load.submit(chunk_two)  # type: ignore
+                pipelines.append(pipe_two)
+
+                key_three = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
+                )
+                secret_three = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_THREE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-three").get()  # type: ignore
+                )
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_three)  # type: ignore
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_three)  # type: ignore
+                chunk_three.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_three.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_three.yaml"
+
+                get_file_from_bucket("oauth_token_three.yaml")
+                pipe_three = extract_transform_load.submit(chunk_three)  # type: ignore
+                pipelines.append(pipe_three)
+
+        else:
+            for chunk_one in pipeline_chunks[0]:
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                )
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
+                get_file_from_bucket("oauth_token_one.yaml")
+                pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
+                pipelines.append(pipe_one)
+
+        all_pipelines = [i for p in pipelines for i in p.result()]  # noqa: F841
+
+        return True
+
+    except Exception as e:
+        raise e
+
+
+@flow(on_failure=[notify_discord])
+def weekly_yahoo_flow(
+    current_date: datetime,
+    season: int = 2023,
+    game_id: int = 423,
+    league_id: int = 127732,
+    schema_name: str = "yahoo",
+    num_of_teams: int = 10,
+) -> bool:
+    try:
+        pipeline_chunks = load_pipeline_list(
+            current_date,
+            season,
+            game_id,
+            league_id,
+            schema_name,
+            num_of_teams,
+        )
+        pipelines = []
+        db_conn_uri = (
+            os.getenv("SUPABASE_CONN_URI_YAHOO") if ENV_STATUS == "local" else Secret.load("supabase-conn-uri").get()  # type: ignore
+        )
+
+        if pipeline_chunks[1] and pipeline_chunks[2]:
+            for chunk_one, chunk_two, chunk_three in zip(
+                pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
+            ):
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                )
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
+                get_file_from_bucket("oauth_token_one.yaml")
+                pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
+                pipelines.append(pipe_one)
+
+                key_two = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
+                )
+                secret_two = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-two").get()  # type: ignore
+                )
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_two)  # type: ignore
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_two)  # type: ignore
+                chunk_two.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_two.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_two.yaml"
+
+                get_file_from_bucket("oauth_token_two.yaml")
+                pipe_two = extract_transform_load.submit(chunk_two)  # type: ignore
+                pipelines.append(pipe_two)
+
+                key_three = (
+                    os.getenv("YAHOO_CONSUMER_KEY_TWO")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-two").get()  # type: ignore
+                )
+                secret_three = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_THREE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-three").get()  # type: ignore
+                )
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_three)  # type: ignore
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_three)  # type: ignore
+                chunk_three.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_three.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_three.yaml"
+
+                get_file_from_bucket("oauth_token_three.yaml")
+                pipe_three = extract_transform_load.submit(chunk_three)  # type: ignore
+                pipelines.append(pipe_three)
+
+        else:
+            for chunk_one in pipeline_chunks[0]:
+                key_one = (
+                    os.getenv("YAHOO_CONSUMER_KEY_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+                )
+                secret_one = (
+                    os.getenv("YAHOO_CONSUMER_SECRET_ONE")
+                    if ENV_STATUS == "local"
+                    else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+                )
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
+
+                get_file_from_bucket("oauth_token_one.yaml")
+                pipe_one = extract_transform_load.submit(chunk_one)  # type: ignore
+                pipelines.append(pipe_one)
+
+        all_pipelines = [i for p in pipelines for i in p.result()]  # noqa: F841
+
+        return True
+
+    except Exception as e:
+        raise e
+
+
+@flow(on_failure=[notify_discord])
+def off_pre_yahoo_flow(
     current_date: datetime,
     season: int = 2023,
     game_id: int = 423,
@@ -308,21 +534,22 @@ if __name__ == "__main__":
     sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
     weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
     off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
-    main_yahoo_flow.serve(  # type: ignore
+    sunday_flow = sunday_yahoo_flow.to_deployment(  # type: ignore
         name="sunday-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
         schedule=sunday_schedule,
         parameters={"current_date": current_date},
     )
-    main_yahoo_flow.serve(  # type: ignore
+    weekly_flow = weekly_yahoo_flow.to_deployment(  # type: ignore
         name="weekly-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
         parameters={"current_date": current_date},
     )
-    main_yahoo_flow.serve(  # type: ignore
+    off_pre_flow = off_pre_yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
         parameters={"current_date": current_date},
     )
+    serve(sunday_flow, weekly_flow, off_pre_flow)

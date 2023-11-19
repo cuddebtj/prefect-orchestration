@@ -4,13 +4,12 @@ from prefect.blocks.core import Block
 from prefect.blocks.notifications import DiscordWebhook
 from prefect.settings import PREFECT_API_URL
 from prefect_gcp import GcpCredentials, GcsBucket
-from pydantic import SecretStr
 from yahoo_export import Config, YahooAPI
 
 
 class YahooConfigBlock(Block):
-    consumer_key: SecretStr
-    consumer_secret: SecretStr
+    consumer_key: str
+    consumer_secret: str
     current_nfl_week: int
     current_nfl_season: int
     league_info: dict[str, Any]
@@ -18,8 +17,8 @@ class YahooConfigBlock(Block):
 
     def get_yahoo_session(self) -> YahooAPI:
         config = Config(
-            yahoo_consumer_key=self.consumer_key,
-            yahoo_consumer_secret=self.consumer_secret,
+            yahoo_consumer_key=self.consumer_key,  # type: ignore
+            yahoo_consumer_secret=self.consumer_secret,  # type: ignore
             current_nfl_week=self.current_nfl_week,
             current_nfl_season=self.current_nfl_season,
             league_info=self.league_info,
