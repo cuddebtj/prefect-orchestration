@@ -60,11 +60,7 @@ class PipelineParameters:
             self.current_timestamp.year if self.current_timestamp.month > 4 else self.current_timestamp.year - 1
         )
         self.current_week = get_week(self.current_timestamp).week  # type: ignore
-        self.team_key_list = (
-            self.team_key_list
-            if self.team_key_list
-            else get_team_key_list(self.league_key, num_teams=self.num_of_teams)  # type: ignore
-        )
+        self.team_key_list = get_team_key_list(self.league_key, num_teams=self.num_of_teams)
 
 
 @dataclass
