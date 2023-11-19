@@ -426,11 +426,13 @@ def extractor(
 
     query_args = {}
     for arg in query_args_list:
-        query_args.update({arg: pipeline_args[arg]})
+        if pipeline_args[arg] is not None:
+            query_args.update({arg: pipeline_args[arg]})
 
     parse_args = {}
     for arg in parse_args_list:
-        query_args.update({arg: pipeline_args[arg]})
+        if pipeline_args[arg] is not None:
+            parse_args.update({arg: pipeline_args[arg]})
 
     extract_obj = extract_objects[end_point_params.end_point]
     resp, _ = extract_obj[0](**query_args)
