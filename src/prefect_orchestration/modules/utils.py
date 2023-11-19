@@ -2,6 +2,7 @@ import calendar
 import json
 import logging
 import math
+import os
 from collections import deque, namedtuple
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -15,20 +16,17 @@ from dateutil.rrule import MINUTELY, MO, MONTHLY, SA, SU, TH, TU, WEEKLY, rrule
 from dotenv import load_dotenv
 from polars import DataFrame
 from prefect import task
+from prefect.blocks.system import Secret
 from prefect.tasks import task_input_hash
 from psycopg import sql
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import Config, YahooAPI
-from yahoo_parser import GameParser, LeagueParser, PlayerParser, TeamParser
-
-from prefect_orchestration.modules.prefect_blocks import upload_file_to_bucket
+from yahoo_parser import GameParser, LeagueParser, PlayerParser, TeamParser, YahooParseBase
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)  # type: ignore
-
-PARSE_CLASS = GameParser | LeagueParser | TeamParser | PlayerParser
 
 NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 
@@ -37,40 +35,31 @@ NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 class DatabaseParameters:
     __slots__ = ["db_conn_uri", "schema_name", "table_name"]
     db_conn_uri: str
-    schema_name: str
+    schema_name: str | None
     table_name: str | None
 
 
 @dataclass
 class PipelineParameters:
     __slots__ = [
-        "yahoo_export_config",
-        "db_params",
-        "num_of_teams",
-        "current_date",
+        "current_timestamp",
         "game_id",
         "league_key",
+        "num_of_teams",
         "current_season",
         "current_week",
         "team_key_list",
     ]
-    yahoo_export_config: Config
-    db_params: DatabaseParameters
-    num_of_teams: int | None
-    current_date: datetime | None
+    current_timestamp: datetime
+    game_id: int | str
+    league_key: str
+    num_of_teams: int = 10
 
     def __post_init__(self):
-        self.current_date = self.current_date if self.current_date else datetime.now(tz=timezone("UTC"))
-        self.game_id = self.game_id if self.game_id else self.yahoo_export_config.league_info["game_id"]
-        self.league_key = (
-            self.league_key
-            if self.league_key
-            else f'{self.game_id}.l.{self.yahoo_export_config.league_info["league_id"]}'
-        )
         self.current_season = (
-            self.current_season if self.current_season else self.yahoo_export_config.league_info["season"]
+            self.current_timestamp.year if self.current_timestamp.month > 4 else self.current_timestamp.year - 1
         )
-        self.current_week = self.current_week if self.current_week else get_week(self.current_date).week  # type: ignore
+        self.current_week = self.current_week if self.current_week else get_week(self.current_timestamp).week  # type: ignore
         self.team_key_list = (
             self.team_key_list
             if self.team_key_list
@@ -79,9 +68,8 @@ class PipelineParameters:
 
 
 @dataclass
-class PipelineConfiguration:
+class EndPointParameters:
     __slots__ = [
-        "pipeline_params",
         "end_point",
         "data_key_list",
         "start",
@@ -90,7 +78,6 @@ class PipelineConfiguration:
         "retrieval_limit",
         "player_key_list",
     ]
-    pipeline_params: PipelineParameters
     end_point: str
     data_key_list: list[str] | None
     start: str | None
@@ -100,9 +87,9 @@ class PipelineConfiguration:
     player_key_list: list[str] | None
 
 
-def define_pipeline_schedules() -> tuple[str, str, str]:
-    current_day = datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
-    nfl_season = get_week(current_day, get_all_weeks=True)
+@lru_cache
+def define_pipeline_schedules(current_timestamp: datetime) -> tuple[str, str, str]:
+    nfl_season = get_week(current_timestamp, get_all_weeks=True)
     start_date = nfl_season[0].week_start
     end_date = nfl_season[-2].week_end + timedelta(days=1)
 
@@ -124,9 +111,9 @@ def define_pipeline_schedules() -> tuple[str, str, str]:
     )
     off_pre_schedule = rrule(
         freq=MONTHLY,
-        dtstart=datetime(current_day.year, 1, 1),  # noqa: DTZ001
+        dtstart=datetime(current_timestamp.year, 1, 1),  # noqa: DTZ001
         interval=1,
-        until=datetime(current_day.year, 12, 31),  # noqa: DTZ001
+        until=datetime(current_timestamp.year, 12, 31),  # noqa: DTZ001
         bysetpos=1,
         byweekday=MO,
         bymonth=(5, 9),
@@ -135,13 +122,13 @@ def define_pipeline_schedules() -> tuple[str, str, str]:
 
 
 @lru_cache
-def get_labor_day(_date: date) -> date:
+def get_labor_day(current_timestamp: date) -> date:
     """
     Calculates when Labor day is of the given year
     """
-    year = _date.year
+    year = current_timestamp.year
     september = 9
-    if _date < datetime(year, 3, 1, tzinfo=timezone("America/Denver")).date():
+    if current_timestamp < datetime(year, 3, 1, tzinfo=timezone("America/Denver")).date():
         year -= 1
     mycal = calendar.Calendar(0)
     cal = mycal.monthdatescalendar(year, september)
@@ -221,15 +208,10 @@ OFFSEASON_WEEK = 0
 
 @lru_cache
 def get_week(
-    _date: datetime | None = None,
-    get_all_weeks: bool = False,  # noqa: FBT001, FBT002
+    current_timestamp: datetime, get_all_weeks: bool = False  # noqa: FBT001, FBT002
 ) -> NFLWeek | list[NFLWeek]:
-    day_date = (
-        _date.astimezone(timezone("America/Denver")).date()
-        if _date
-        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver")).date()
-    )
-    labor_day = get_labor_day(day_date)
+    current_date = current_timestamp.astimezone(timezone("America/Denver")).date()
+    labor_day = get_labor_day(current_date)
     days_to_current_wednesday = 2
     days_to_next_tuesday = 8
 
@@ -240,34 +222,26 @@ def get_week(
         nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
         nfl_season.append(nfl_week)
 
-        if day_date >= current_week_wednesday and day_date < next_week_tuesday and get_all_weeks is False:
+        if current_date >= current_week_wednesday and current_date < next_week_tuesday and get_all_weeks is False:
             return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
 
-    if day_date < nfl_season[0].week_start or day_date > nfl_season[-1].week_end:
-        return NFLWeek(week=0, week_start=day_date, week_end=day_date)
+    if current_date < nfl_season[0].week_start or current_date > nfl_season[-1].week_end:
+        return NFLWeek(week=0, week_start=current_date, week_end=current_date)
     else:
         return nfl_season
 
 
-@lru_cache
-def get_data_from_db(connection_str: str, sql_query: sql.SQL, schema_name: str) -> list[Any]:
+def get_data_from_db(connection_str: str, sql_query: sql.Composed) -> list[Any]:
     """
     Copy data from postgres
     """
     conn = psycopg.connect(connection_str)
-
     logger.info("Connection to postgres database successful.")
 
     try:
         curs = conn.cursor()
-
-        if schema_name != "":
-            sql_search = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-            curs.execute(sql_search)
-
         curs.execute(sql_query)  # type: ignore
         query_results = curs.fetchall()
-
         logger.info("SQL query executed successfully.")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
@@ -289,12 +263,10 @@ def get_team_key_list(league_key: str, num_teams: int) -> list[str]:
 
 
 @task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=7))
-def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
+def get_player_key_list(db_conn_uri: str, league_key: str) -> list[str]:
     sql_str = "select distinct player_key from yahoo_data.players where league_key = %s"
-    sql_query = sql.SQL(sql_str).format(sql.Literal(pipeline_params.league_key))
-    player_key_list = get_data_from_db(
-        pipeline_params.db_params.db_conn_uri, sql_query, pipeline_params.db_params.schema_name  # type: ignore
-    )
+    sql_query = sql.SQL(sql_str).format(sql.Literal(league_key))
+    player_key_list = get_data_from_db(db_conn_uri, sql_query)
     return player_key_list
 
 
@@ -312,53 +284,13 @@ def chunk_list_twenty_five(input_list: list[str]) -> Generator[list[str], None, 
 
 
 @task
-def get_parameters(
-    consumer_key: SecretStr | None = None,
-    consumer_secret: SecretStr | None = None,
-    db_conn_uri: str | None = None,
-    current_date: datetime | None = None,
-    num_of_teams: int | None = None,
-    season: int = 2023,
-    game_id: int = 423,
-    league_id: int = 127732,
-    schema_name: str = "yahoo_data",
-    table_name: str = "test",
-) -> PipelineParameters:
-    current_date = current_date if current_date else datetime.now(timezone("UTC"))
-    num_of_teams = num_of_teams if num_of_teams else 10
-
-    db_conn_params = DatabaseParameters(
-        db_conn_uri=db_conn_uri,  # type: ignore
-        schema_name=schema_name,
-        table_name=table_name,
-    )
-
-    yahoo_export_config = Config(
-        consumer_key=consumer_key,  # type: ignore
-        consumer_secret=consumer_secret,  # type: ignore
-        current_nfl_week=0,
-        current_nfl_season=season,
-        league_info={"season": season, "game_id": game_id, "league_id": league_id},
-    )
-
-    pipeline_params = PipelineParameters(
-        yahoo_export_config=yahoo_export_config,
-        db_params=db_conn_params,
-        num_of_teams=num_of_teams,
-        current_date=current_date,
-    )
-
-    return pipeline_params
-
-
-@task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
-    nfl_season = get_week(pipeline_params.current_date, get_all_weeks=True)
+    nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
     nfl_end_date = nfl_season[-1].week_end
     nfl_end_week = nfl_season[-1].week
-    current_date = pipeline_params.current_date.astimezone(timezone("America/Denver")).date()  # type: ignore
+    current_date = pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date()  # type: ignore
     current_day_of_week = current_date.weekday()  # type: ignore
     may_first = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
 
@@ -390,15 +322,13 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
 
 
 @task
-def get_pipeline_config(
-    pipeline_params: PipelineParameters,
+def get_endpoint_config(
     end_point: str,
     page_start: int | None,
     retrieval_limit: int | None,
     player_key_list: list[str] | None,
-) -> PipelineConfiguration:
-    pipeline_config = PipelineConfiguration(
-        pipeline_params=pipeline_params,
+) -> EndPointParameters:
+    end_point_params = EndPointParameters(
         end_point=end_point,
         data_key_list=None,
         start=player_key_list[0] if player_key_list else None,
@@ -410,11 +340,11 @@ def get_pipeline_config(
 
     match end_point:
         case "get_all_game_keys":
-            pipeline_config.data_key_list = ["games"]
+            end_point_params.data_key_list = ["games"]
 
         case "get_player":
-            pipeline_config.page_start = page_start if page_start else 0
-            pipeline_config.retrieval_limit = retrieval_limit if retrieval_limit else 25
+            end_point_params.page_start = page_start if page_start else 0
+            end_point_params.retrieval_limit = retrieval_limit if retrieval_limit else 25
 
         case "get_player_draft_analysis" | "get_player_stat" | "get_player_pct_owned":
             if not player_key_list:
@@ -425,23 +355,23 @@ def get_pipeline_config(
             error_msg = f"Invalid end_point: {end_point}"
             raise ValueError(error_msg)
 
-    return pipeline_config
+    return end_point_params
 
 
 @task
 def split_pipelines(
-    pipe_config_list: list[PipelineConfiguration],
-) -> tuple[list[PipelineConfiguration], list[PipelineConfiguration] | None, list[PipelineConfiguration] | None]:
-    pipeline_length = len(pipe_config_list)
+    end_point_list: list[EndPointParameters],
+) -> tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None]:
+    pipeline_length = len(end_point_list)
 
     if pipeline_length >= 3:  # noqa: PLR2004
         chunk_size = math.ceil(pipeline_length / 3)
-        chunk_one = pipe_config_list[:chunk_size]
-        chunk_two = pipe_config_list[chunk_size : chunk_size * 2]
-        chunk_three = pipe_config_list[chunk_size * 2 :]
+        chunk_one = end_point_list[:chunk_size]
+        chunk_two = end_point_list[chunk_size : chunk_size * 2]
+        chunk_three = end_point_list[chunk_size * 2 :]
 
     else:
-        chunk_one = pipe_config_list
+        chunk_one = end_point_list
         chunk_two = None
         chunk_three = None
 
@@ -449,18 +379,20 @@ def split_pipelines(
 
 
 @task
-def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], str, PARSE_CLASS]:
+def extractor(
+    pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
+) -> tuple[dict[str, str], YahooParseBase]:
     pipeline_args = {
-        "game_key": str(pipeline_config.pipeline_params.game_id),
-        "league_key": pipeline_config.pipeline_params.league_key,
-        "week": pipeline_config.pipeline_params.current_week,
-        "team_key_list": pipeline_config.pipeline_params.team_key_list,
-        "start_count": pipeline_config.page_start,
-        "retrieval_limit": pipeline_config.retrieval_limit,
-        "player_key_list": pipeline_config.player_key_list,
-        "data_key_list": pipeline_config.data_key_list,
-        "start": pipeline_config.start,
-        "end": pipeline_config.end,
+        "game_key": str(pipeline_params.game_id),
+        "league_key": pipeline_params.league_key,
+        "week": pipeline_params.current_week,
+        "team_key_list": pipeline_params.team_key_list,
+        "start_count": end_point_params.page_start,
+        "retrieval_limit": end_point_params.retrieval_limit,
+        "player_key_list": end_point_params.player_key_list,
+        "data_key_list": end_point_params.data_key_list,
+        "start": end_point_params.start,
+        "end": end_point_params.end,
     }
 
     query_args_list = [
@@ -481,7 +413,6 @@ def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], s
         "end",
     ]
 
-    yahoo_api = YahooAPI(config=pipeline_config.pipeline_params.yahoo_export_config)
     extract_objects = {
         "get_all_game_keys": (yahoo_api.get_all_game_keys, GameParser),
         "get_game": (yahoo_api.get_game, GameParser),
@@ -505,32 +436,28 @@ def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], s
     for arg in parse_args_list:
         query_args.update({arg: pipeline_args[arg]})
 
-    extract_obj = extract_objects[pipeline_config.end_point]
-    resp, query_ts = extract_obj[0](**query_args)
+    extract_obj = extract_objects[end_point_params.end_point]
+    resp, _ = extract_obj[0](**query_args)
 
-    if pipeline_config.end_point in ["get_all_game_keys", "get_game", "get_roster"]:
+    if end_point_params.end_point in ["get_all_game_keys", "get_game", "get_roster"]:
         parser = extract_obj[1](
             response=resp,
-            query_timestamp=query_ts,
-            season=pipeline_config.pipeline_params.current_season,
+            season=pipeline_params.current_season,
             **parse_args,
         )
     else:
         parser = extract_obj[1](
             response=resp,
-            query_timestamp=query_ts,
-            season=pipeline_config.pipeline_params.current_season,
-            end_point=pipeline_config.end_point,
+            season=pipeline_params.current_season,
+            end_point=end_point_params.end_point,
             **parse_args,
         )
 
-    upload_file_to_bucket(pipeline_config.pipeline_params.yahoo_export_config.token_file_path)  # type: ignore
-
-    return resp, query_ts, parser
+    return resp, parser
 
 
 @lru_cache
-def get_parsing_methods(end_point: str, data_parser: PARSE_CLASS) -> dict[str, Callable]:
+def get_parsing_methods(end_point: str, data_parser: YahooParseBase) -> dict[str, Callable]:
     match end_point:
         case "get_all_game_keys":
             return {"game_key_df": data_parser.game_key_df}  # type: ignore
@@ -622,7 +549,7 @@ def get_parsing_methods(end_point: str, data_parser: PARSE_CLASS) -> dict[str, C
 
 
 @task
-def parse_response(data_parser: PARSE_CLASS, end_point: str) -> dict[str, DataFrame]:
+def parse_response(data_parser: YahooParseBase, end_point: str) -> dict[str, DataFrame]:
     parsing_methods = get_parsing_methods(end_point, data_parser)
 
     df_dict = {}
@@ -634,34 +561,28 @@ def parse_response(data_parser: PARSE_CLASS, end_point: str) -> dict[str, DataFr
 
 
 @task
-def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str] | None = None) -> None:
+def json_to_db(raw_data: dict, database_parameters: DatabaseParameters, columns: list[str] | None = None) -> None:
     """
     Copy data into postgres
     """
+    # schema_name = database_parameters.schema_name
+    schema_name = "yahoo_json"
+    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+
+    copy_statement = "COPY {0} ({1}) FROM STDIN"
+    column_names = [sql.Identifier(col) for col in columns] if columns else [sql.Identifier("yahoo_json")]
+    copy_query = sql.SQL(copy_statement).format(sql.Identifier(database_parameters.table_name), *column_names)  # type: ignore
+
     file_buffer = StringIO()  # type: ignore
-    json.dump(data, file_buffer)  # type: ignore
+    json.dump(raw_data, file_buffer)  # type: ignore
     file_buffer.seek(0)
 
-    conn = psycopg.connect(params_dict.db_params.db_conn_uri)
-    # schema_name = params_dict.db_params.schema_name
-    schema_name = "yahoo_data"
-
+    conn = psycopg.connect(database_parameters.db_conn_uri)
     logger.info("Connection to postgres database successful.")
 
     try:
         curs = conn.cursor()
-
-        sql_search = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-        curs.execute(sql_search)
-
-        # if columns:
-        copy_str = "COPY {0} ({1}) FROM STDIN"
-        # column_names = [sql.Identifier(col) for col in columns] if columns else ""
-        column_names = [sql.Identifier("yahoo_json")]
-        copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name), *column_names)  # type: ignore
-        # else:
-        #     copy_str = "COPY {0} FROM STDIN"
-        #     copy_query = sql.SQL(copy_str).format(sql.Identifier(params_dict.db_params.table_name))  # type: ignore
+        curs.execute(set_schema_statement)
 
         with curs.copy(copy_query) as copy:
             copy.write(file_buffer.read())
@@ -681,12 +602,60 @@ def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str] |
 
 
 @task
-def df_to_db(data_df: DataFrame, params_dict: PipelineParameters) -> None:
-    # table_name = (
-    #     f"{params_dict.db_params.schema_name}.{params_dict.db_params.table_name}"
-    #     if params_dict.db_params.schema_name
-    #     else params_dict.db_params.table_name
-    # )
-    table_name = f"yahoo_data.{params_dict.db_params.table_name}"
-    data_df.write_database(table_name=table_name, connection=params_dict.db_params.db_conn_uri, engine="adbc")  # type: ignore
+def df_to_db(resp_table_df: DataFrame, database_parameters: DatabaseParameters) -> None:
+    schema_name = "yahoo_data"
+    table_name = f"{schema_name}.{database_parameters.table_name}"
+    resp_table_df.write_database(table_name=table_name, connection=database_parameters.db_conn_uri, engine="adbc")  # type: ignore
     logger.info("Dataframe successfully appended to database.")
+
+
+@task
+def get_yahoo_api_config(how_many_conig: int) -> Config | list[Config]:
+    env_status = None  # os.getenv("ENVIRONMENT", "local")
+
+    if how_many_conig == 1:
+        consumer_key = SecretStr(
+            os.getenv("YAHOO_CONSUMER_KEY_ONE", "key_one")
+            if env_status == "local"
+            else Secret.load("yahoo-consumer-key-one").get()  # type: ignore
+        )
+        consumer_secret = SecretStr(
+            os.getenv("YAHOO_CONSUMER_SECRET_ONE", "secret_one")
+            if env_status == "local"
+            else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
+        )
+        tokey_file_path = "oauth_token_one.yaml"
+        config_return = Config(
+            yahoo_consumer_key=consumer_key,
+            yahoo_consumer_secret=consumer_secret,
+            token_file_path=tokey_file_path,
+        )
+
+    else:
+        num_to_words = {
+            1: "one",
+            2: "two",
+            3: "three",
+        }
+        config_return = []
+        for config_num in range(1, how_many_conig + 1):
+            config_num_str = num_to_words[config_num]
+            consumer_key = SecretStr(
+                os.getenv(f"YAHOO_CONSUMER_KEY_{config_num_str.upper()}", f"key_{config_num_str}")
+                if env_status == "local"
+                else Secret.load(f"yahoo-consumer-key-{config_num_str}").get()  # type: ignore
+            )
+            consumer_secret = SecretStr(
+                os.getenv(f"YAHOO_CONSUMER_SECRET_{config_num_str.upper()}", f"secret_{config_num_str}")
+                if env_status == "local"
+                else Secret.load(f"yahoo-consumer-secret-{config_num_str}").get()  # type: ignore
+            )
+            tokey_file_path = f"oauth_token_{config_num_str}.yaml"
+            _config = Config(
+                yahoo_consumer_key=consumer_key,
+                yahoo_consumer_secret=consumer_secret,
+                token_file_path=tokey_file_path,
+            )
+            config_return.append(_config)
+
+    return config_return
