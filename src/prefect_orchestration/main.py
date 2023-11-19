@@ -217,9 +217,9 @@ def yahoo_flow(
 ) -> bool:
     try:
         db_conn_uri = SecretStr(
-            os.getenv("SUPABASE_CONN_URI_YAHOO", "localhost")
+            os.getenv("SUPABASE_CONN_PYTHON_YAHOO", "localhost")
             if ENV_STATUS == "local"
-            else Secret.load("supabase-conn-uri").get()  # type: ignore
+            else Secret.load("supabase-conn-python-yahoo").get()  # type: ignore
         )
         pipeline_params, db_params, pipeline_chunks = load_pipeline_list(
             db_conn_uri=db_conn_uri,

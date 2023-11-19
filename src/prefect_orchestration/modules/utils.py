@@ -57,7 +57,7 @@ class PipelineParameters:
 
     def __post_init__(self):
         self.current_season = (
-            self.current_timestamp.year if self.current_timestamp.month > 4 else self.current_timestamp.year - 1
+            self.current_timestamp.year if self.current_timestamp.month > 1 else self.current_timestamp.year - 1
         )
         self.current_week = get_week(self.current_timestamp).week  # type: ignore
         self.team_key_list = get_team_key_list(self.league_key, num_teams=self.num_of_teams)
@@ -181,8 +181,12 @@ PRESEASON_END_POINTS = [
     "get_league_draft_result",
     "get_player",
     "get_player_draft_analysis",
-]  # between june 1st and september 1st
-OFFSEASON_END_POINTS = ["get_all_game_keys", "get_league_offseason"]  # between march 1st and june 1st
+]  # between may 1st and Labor Day
+OFFSEASON_END_POINTS = [
+    "get_all_game_keys",
+    "get_league_offseason",
+    "get_player",
+]  # between march 1st and may 1st
 BEGINNING_OF_WEEK_END_POINTS = ["get_league_matchup"]  # after the monday night game or the tuesday morning after
 BEFORE_MAIN_SLATE_WEEKLY_END_POINTS = [
     "get_player_pct_owned",
@@ -221,10 +225,10 @@ def get_week(
         if current_date >= current_week_wednesday and current_date < next_week_tuesday and get_all_weeks is False:
             return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
 
-    if current_date < nfl_season[0].week_start or current_date > nfl_season[-1].week_end and get_all_weeks is False:
-        return NFLWeek(week=0, week_start=current_date, week_end=current_date)
-    else:
+    if get_all_weeks is True:
         return nfl_season
+    else:
+        return NFLWeek(week=0, week_start=current_date, week_end=current_date)
 
 
 def get_data_from_db(connection_str: str, sql_query: sql.Composed) -> list[Any]:
@@ -284,11 +288,13 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
-    nfl_end_date = nfl_season[-1].week_end
     nfl_end_week = nfl_season[-1].week
     current_date = pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date()  # type: ignore
     current_day_of_week = current_date.weekday()  # type: ignore
-    may_first = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
+    may_first = datetime(current_date.year, 5, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
+    prior_nfl_end_date = (
+        datetime(current_date.year, 1, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
+    )
 
     end_points = []
     # preseason or offseason
@@ -297,7 +303,7 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
         if current_date < nfl_start_date and current_date >= may_first:  # type: ignore
             end_points += PRESEASON_END_POINTS
         # offseason
-        if current_date < may_first and current_date >= nfl_end_date:  # type: ignore
+        if current_date < may_first and current_date >= prior_nfl_end_date:  # type: ignore
             end_points += OFFSEASON_END_POINTS
     # regular season -> live or weekly
     if current_week > OFFSEASON_WEEK and current_week < nfl_end_week:
@@ -347,10 +353,6 @@ def get_endpoint_config(
                 error_msg = f"player_key_list must be provided for this end_point: {end_point}"
                 raise ValueError(error_msg)
 
-        case _:
-            error_msg = f"Invalid end_point: {end_point}"
-            raise ValueError(error_msg)
-
     return end_point_params
 
 
@@ -377,81 +379,156 @@ def split_pipelines(
 @task
 def extractor(
     pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
-) -> tuple[dict[str, str], YahooParseBase]:
-    pipeline_args = {
-        "game_key": str(pipeline_params.game_id),
-        "league_key": pipeline_params.league_key,
-        "week": pipeline_params.current_week,
-        "team_key_list": pipeline_params.team_key_list,
-        "start_count": end_point_params.page_start,
-        "retrieval_limit": end_point_params.retrieval_limit,
-        "player_key_list": end_point_params.player_key_list,
-        "data_key_list": end_point_params.data_key_list,
-        "start": end_point_params.start,
-        "end": end_point_params.end,
-    }
-
-    query_args_list = [
-        "game_key",
-        "league_key",
-        "week",
-        "team_key_list",
-        "start_count",
-        "retrieval_limit",
-        "player_key_list",
-    ]
-    parse_args_list = [
-        "game_key",
-        "data_key_list",
-        "league_key",
-        "week",
-        "start",
-        "end",
-    ]
-
-    extract_objects = {
-        "get_all_game_keys": (yahoo_api.get_all_game_keys, GameParser),
-        "get_game": (yahoo_api.get_game, GameParser),
-        "get_league_preseason": (yahoo_api.get_league_preseason, LeagueParser),
-        "get_league_draft_result": (yahoo_api.get_league_draft_result, LeagueParser),
-        "get_league_matchup": (yahoo_api.get_league_matchup, LeagueParser),
-        "get_league_transaction": (yahoo_api.get_league_transaction, LeagueParser),
-        "get_league_offseason": (yahoo_api.get_league_offseason, LeagueParser),
-        "get_roster": (yahoo_api.get_roster, TeamParser),
-        "get_player": (yahoo_api.get_player, PlayerParser),
-        "get_player_draft_analysis": (yahoo_api.get_player_draft_analysis, PlayerParser),
-        "get_player_stat": (yahoo_api.get_player_stat, PlayerParser),
-        "get_player_pct_owned": (yahoo_api.get_player_pct_owned, PlayerParser),
-    }
-
-    query_args = {}
-    for arg in query_args_list:
-        if pipeline_args[arg] is not None:
-            query_args.update({arg: pipeline_args[arg]})
-
-    parse_args = {}
-    for arg in parse_args_list:
-        if pipeline_args[arg] is not None:
-            parse_args.update({arg: pipeline_args[arg]})
-
-    extract_obj = extract_objects[end_point_params.end_point]
-    resp, _ = extract_obj[0](**query_args)
-
-    if end_point_params.end_point in ["get_all_game_keys", "get_game", "get_roster"]:
-        parser = extract_obj[1](
+) -> tuple[dict[str, str], YahooParseBase] | None:
+    if end_point_params.end_point == "get_all_game_keys":
+        resp, _ = yahoo_api.get_all_game_keys()
+        parser = GameParser(
             response=resp,
             season=pipeline_params.current_season,
-            **parse_args,
+            game_key=str(pipeline_params.game_id),
+            data_key_list=end_point_params.data_key_list,
         )
-    else:
-        parser = extract_obj[1](
+        return resp, parser
+
+    elif end_point_params.end_point == "get_game":
+        resp, _ = yahoo_api.get_game(game_key=str(pipeline_params.game_id))
+        parser = GameParser(
             response=resp,
             season=pipeline_params.current_season,
+            game_key=str(pipeline_params.game_id),
+            data_key_list=end_point_params.data_key_list,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_league_preseason":
+        resp, _ = yahoo_api.get_league_preseason(league_key=pipeline_params.league_key)
+        parser = LeagueParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            **parse_args,
+            week=pipeline_params.current_week,
         )
+        return resp, parser
 
-    return resp, parser
+    elif end_point_params.end_point == "get_league_draft_result":
+        resp, _ = yahoo_api.get_league_draft_result(league_key=pipeline_params.league_key)
+        parser = LeagueParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            league_key=pipeline_params.league_key,
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_league_matchup":
+        resp, _ = yahoo_api.get_league_matchup(league_key=pipeline_params.league_key, week=pipeline_params.current_week)
+        parser = LeagueParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            league_key=pipeline_params.league_key,
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_league_transaction":
+        resp, _ = yahoo_api.get_league_transaction(league_key=pipeline_params.league_key)
+        parser = LeagueParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            league_key=pipeline_params.league_key,
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_league_offseason":
+        resp, _ = yahoo_api.get_league_offseason(league_key=pipeline_params.league_key)
+        parser = LeagueParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            league_key=pipeline_params.league_key,
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_roster":
+        resp, _ = yahoo_api.get_roster(team_key_list=pipeline_params.team_key_list, week=pipeline_params.current_week)
+        parser = TeamParser(
+            response=resp,  # type: ignore
+            season=pipeline_params.current_season,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_player":
+        resp, _ = yahoo_api.get_player(
+            league_key=pipeline_params.league_key,
+            start_count=end_point_params.page_start,  # type: ignore
+            retrieval_limit=end_point_params.retrieval_limit,  # type: ignore
+        )
+        parser = PlayerParser(
+            response=resp,  # type: ignore
+            league_key=pipeline_params.league_key,
+            season=pipeline_params.current_season,
+            start=end_point_params.start,  # type: ignore
+            end=end_point_params.end,  # type: ignore
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser  # type: ignore
+
+    elif end_point_params.end_point == "get_player_draft_analysis":
+        resp, _ = yahoo_api.get_player_draft_analysis(
+            league_key=pipeline_params.league_key, player_key_list=end_point_params.player_key_list  # type: ignore
+        )
+        parser = PlayerParser(
+            response=resp,  # type: ignore
+            league_key=pipeline_params.league_key,
+            season=pipeline_params.current_season,
+            start=end_point_params.start,  # type: ignore
+            end=end_point_params.end,  # type: ignore
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_player_stat":
+        resp, _ = yahoo_api.get_player_stat(
+            league_key=pipeline_params.league_key,
+            player_key_list=end_point_params.player_key_list,  # type: ignore
+            week=pipeline_params.current_week,
+        )
+        parser = PlayerParser(
+            response=resp,  # type: ignore
+            league_key=pipeline_params.league_key,
+            season=pipeline_params.current_season,
+            start=end_point_params.start,  # type: ignore
+            end=end_point_params.end,  # type: ignore
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
+
+    elif end_point_params.end_point == "get_player_pct_owned":
+        resp, _ = yahoo_api.get_player_pct_owned(
+            league_key=pipeline_params.league_key,
+            player_key_list=end_point_params.player_key_list,  # type: ignore
+            week=pipeline_params.current_week,
+        )
+        parser = PlayerParser(
+            response=resp,  # type: ignore
+            league_key=pipeline_params.league_key,
+            season=pipeline_params.current_season,
+            start=end_point_params.start,  # type: ignore
+            end=end_point_params.end,  # type: ignore
+            end_point=end_point_params.end_point,
+            week=pipeline_params.current_week,
+        )
+        return resp, parser
 
 
 @lru_cache
