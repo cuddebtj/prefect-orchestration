@@ -12,7 +12,12 @@ from pytz import timezone
 from yahoo_export import YahooAPI
 from yahoo_parser import YahooParseBase
 
-from prefect_orchestration.modules.prefect_blocks import get_file_from_bucket, notify_discord, upload_file_to_bucket
+from prefect_orchestration.modules.prefect_blocks import (
+    get_file_from_bucket,
+    notify_discord_cancellation,
+    notify_discord_failure,
+    upload_file_to_bucket,
+)
 from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
@@ -36,7 +41,7 @@ load_dotenv()
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def get_parameters(
     db_conn_uri: SecretStr,
     current_timestamp: datetime,
@@ -98,7 +103,7 @@ def get_parameters(
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def extract_data(
     pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
 ) -> tuple[dict, YahooParseBase]:
@@ -110,7 +115,7 @@ def extract_data(
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def parse_data(data_parser: YahooParseBase, end_point_params: EndPointParameters) -> dict[str, DataFrame]:
     try:
         data = parse_response(data_parser, end_point_params.end_point)
@@ -120,7 +125,7 @@ def parse_data(data_parser: YahooParseBase, end_point_params: EndPointParameters
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def load_raw_data(raw_data: dict, db_params: DatabaseParameters, columns: list[str] | None) -> bool:
     try:
         json_to_db(raw_data, db_params, columns)
@@ -129,7 +134,7 @@ def load_raw_data(raw_data: dict, db_params: DatabaseParameters, columns: list[s
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def load_parsed_data(resp_table_df: DataFrame, db_params: DatabaseParameters) -> bool:
     try:
         df_to_db(resp_table_df, db_params)
@@ -138,7 +143,11 @@ def load_parsed_data(resp_table_df: DataFrame, db_params: DatabaseParameters) ->
         raise e
 
 
-@flow(task_runner=SequentialTaskRunner(), on_failure=[notify_discord])
+@flow(
+    task_runner=SequentialTaskRunner(),
+    on_failure=[notify_discord_failure],
+    on_cancellation=[notify_discord_cancellation],
+)
 def load_pipeline_list(
     db_conn_uri: SecretStr,
     current_date: datetime,
@@ -166,7 +175,7 @@ def load_pipeline_list(
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def extract_transform_load(
     pipeline_params: PipelineParameters,
     db_params: DatabaseParameters,
@@ -199,7 +208,7 @@ def extract_transform_load(
         raise e
 
 
-@flow(on_failure=[notify_discord])
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def yahoo_flow(
     current_date: datetime,
     game_id: int = 423,
