@@ -34,7 +34,7 @@ NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 @dataclass
 class DatabaseParameters:
     __slots__ = ["db_conn_uri", "schema_name", "table_name"]
-    db_conn_uri: str
+    db_conn_uri: SecretStr
     schema_name: str | None
     table_name: str | None
 
@@ -259,10 +259,10 @@ def get_team_key_list(league_key: str, num_teams: int) -> list[str]:
 
 
 @task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=7))
-def get_player_key_list(db_conn_uri: str, league_key: str) -> list[str]:
+def get_player_key_list(db_conn_uri: SecretStr, league_key: str) -> list[str]:
     sql_str = "select distinct player_key from yahoo_data.players where league_key = %s"
     sql_query = sql.SQL(sql_str).format(sql.Literal(league_key))
-    player_key_list = get_data_from_db(db_conn_uri, sql_query)
+    player_key_list = get_data_from_db(db_conn_uri.get_secret_value(), sql_query)
     return player_key_list
 
 
@@ -557,7 +557,7 @@ def parse_response(data_parser: YahooParseBase, end_point: str) -> dict[str, Dat
 
 
 @task
-def json_to_db(raw_data: dict, database_parameters: DatabaseParameters, columns: list[str] | None = None) -> None:
+def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str] | None = None) -> None:
     """
     Copy data into postgres
     """
@@ -567,13 +567,13 @@ def json_to_db(raw_data: dict, database_parameters: DatabaseParameters, columns:
 
     copy_statement = "COPY {0} ({1}) FROM STDIN"
     column_names = [sql.Identifier(col) for col in columns] if columns else [sql.Identifier("yahoo_json")]
-    copy_query = sql.SQL(copy_statement).format(sql.Identifier(database_parameters.table_name), *column_names)  # type: ignore
+    copy_query = sql.SQL(copy_statement).format(sql.Identifier(db_params.table_name), *column_names)  # type: ignore
 
     file_buffer = StringIO()  # type: ignore
     json.dump(raw_data, file_buffer)  # type: ignore
     file_buffer.seek(0)
 
-    conn = psycopg.connect(database_parameters.db_conn_uri)
+    conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
     logger.info("Connection to postgres database successful.")
 
     try:
@@ -598,10 +598,14 @@ def json_to_db(raw_data: dict, database_parameters: DatabaseParameters, columns:
 
 
 @task
-def df_to_db(resp_table_df: DataFrame, database_parameters: DatabaseParameters) -> None:
+def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     schema_name = "yahoo_data"
-    table_name = f"{schema_name}.{database_parameters.table_name}"
-    resp_table_df.write_database(table_name=table_name, connection=database_parameters.db_conn_uri, engine="adbc")  # type: ignore
+    table_name = f"{schema_name}.{db_params.table_name}"
+    resp_table_df.write_database(
+        table_name=table_name,
+        connection=db_params.db_conn_uri.get_secret_value(),
+        engine="adbc",
+    )
     logger.info("Dataframe successfully appended to database.")
 
 

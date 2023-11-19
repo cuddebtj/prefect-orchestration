@@ -38,7 +38,7 @@ ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
 
 @flow(on_failure=[notify_discord])
 def get_parameters(
-    db_conn_uri: str,
+    db_conn_uri: SecretStr,
     current_timestamp: datetime,
     game_id: int | str,
     league_id: int | str,
@@ -140,7 +140,7 @@ def load_parsed_data(resp_table_df: DataFrame, db_params: DatabaseParameters) ->
 
 @flow(task_runner=SequentialTaskRunner(), on_failure=[notify_discord])
 def load_pipeline_list(
-    db_conn_uri: str,
+    db_conn_uri: SecretStr,
     current_date: datetime,
     game_id: int,
     league_id: int,
@@ -199,19 +199,6 @@ def extract_transform_load(
         raise e
 
 
-# def load_pipeline_list(
-#     db_conn_uri: str,
-#     current_date: datetime,
-#     game_id: int,
-#     league_id: int,
-#     num_of_teams: int,
-# ) -> tuple[
-#     PipelineParameters,
-#     DatabaseParameters,
-#     tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
-# ]:
-
-
 @flow(on_failure=[notify_discord])
 def yahoo_flow(
     current_date: datetime,
@@ -220,7 +207,7 @@ def yahoo_flow(
     num_of_teams: int = 10,
 ) -> bool:
     try:
-        db_conn_uri = (
+        db_conn_uri = SecretStr(
             os.getenv("SUPABASE_CONN_URI_YAHOO", "localhost")
             if ENV_STATUS == "local"
             else Secret.load("supabase-conn-uri").get()  # type: ignore
