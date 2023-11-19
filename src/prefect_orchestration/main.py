@@ -281,11 +281,13 @@ def yahoo_flow(
 
 
 if __name__ == "__main__":
-    current_date = datetime.now(tz=timezone("UTC"))
+    current_timestamp = datetime.now(tz=timezone("UTC"))
     anchor_timezone = "America/Denver"
-    nfl_season = get_week(current_date, True)
+    nfl_season = get_week(current_timestamp, True)
 
-    sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules()
+    sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules(
+        current_timestamp=current_timestamp
+    )
     sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
     weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
     off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
@@ -293,21 +295,21 @@ if __name__ == "__main__":
         name="sunday-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
         schedule=sunday_schedule,
-        parameters={"current_date": current_date},
+        parameters={"current_date": current_timestamp},
         tags=["yahoo", "sunday", "live"],
     )
     weekly_flow = yahoo_flow.to_deployment(  # type: ignore
         name="weekly-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
-        parameters={"current_date": current_date},
+        parameters={"current_date": current_timestamp},
         tags=["yahoo", "weekly"],
     )
     off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
-        parameters={"current_date": current_date},
+        parameters={"current_date": current_timestamp},
         tags=["yahoo", "preseason", "offseason"],
     )
     serve(sunday_flow, weekly_flow, off_pre_flow)  # type: ignore

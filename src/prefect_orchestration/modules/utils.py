@@ -53,13 +53,13 @@ class PipelineParameters:
     current_timestamp: datetime
     game_id: int | str
     league_key: str
-    num_of_teams: int = 10
+    num_of_teams: int
 
     def __post_init__(self):
         self.current_season = (
             self.current_timestamp.year if self.current_timestamp.month > 4 else self.current_timestamp.year - 1
         )
-        self.current_week = self.current_week if self.current_week else get_week(self.current_timestamp).week  # type: ignore
+        self.current_week = get_week(self.current_timestamp).week  # type: ignore
         self.team_key_list = (
             self.team_key_list
             if self.team_key_list
