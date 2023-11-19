@@ -22,6 +22,7 @@ from prefect_orchestration.modules.utils import (
     get_parameters,
     get_pipeline_config,
     get_player_key_list,
+    get_week,
     json_to_db,
     parse_response,
     split_pipelines,
@@ -300,8 +301,9 @@ def main_yahoo_flow(
 if __name__ == "__main__":
     current_date = datetime.now(tz=timezone("UTC"))
     anchor_timezone = "America/Denver"
+    nfl_season = get_week(current_date, True)
 
-    off_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    off_season_anchor = datetime(current_date.year, 3, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver"))
     off_season_schedule = construct_schedule(
         anchor_date=off_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
     )
@@ -312,7 +314,7 @@ if __name__ == "__main__":
         parameters={"current_date": current_date},
     )
 
-    pre_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    pre_season_anchor = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver"))
     pre_season_schedule = construct_schedule(
         anchor_date=pre_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
     )
@@ -323,7 +325,7 @@ if __name__ == "__main__":
         parameters={"current_date": current_date},
     )
 
-    regular_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    regular_season_anchor = nfl_season[0].week_start
     regular_season_schedule = construct_schedule(
         anchor_date=regular_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
     )
@@ -334,7 +336,7 @@ if __name__ == "__main__":
         parameters={"current_date": current_date},
     )
 
-    post_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    post_season_anchor = nfl_season[-3].week_start
     post_season_schedule = construct_schedule(
         anchor_date=post_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
     )

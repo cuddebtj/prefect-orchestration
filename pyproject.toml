@@ -26,6 +26,7 @@ dependencies = [
   "yahoo-export",
   "yahoo-parser",
   "psycopg[binary]",
+  "adbc_driver_postgresql",
 ]
 
 [project.urls]

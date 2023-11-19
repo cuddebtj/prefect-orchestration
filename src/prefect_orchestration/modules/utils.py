@@ -185,6 +185,36 @@ OFFSEASON_WEEK = 0
 
 
 @lru_cache
+def get_week(
+    _date: datetime | None = None,
+    get_all_weeks: bool = False,  # noqa: FBT001, FBT002
+) -> NFLWeek | list[NFLWeek]:
+    _date = (
+        _date.astimezone(timezone("America/Denver"))
+        if _date
+        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
+    )
+    labor_day = get_labor_day(_date)
+    days_to_current_wednesday = 2
+    days_to_next_tuesday = 8
+
+    nfl_season = []
+    for week in range(0, 18):
+        current_week_wednesday = labor_day + timedelta(days=((week * 7) + days_to_current_wednesday))
+        next_week_tuesday = labor_day + timedelta(days=((week * 7) + days_to_next_tuesday))
+        nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+        nfl_season.append(nfl_week)
+
+        if _date >= current_week_wednesday and _date < next_week_tuesday and get_all_weeks is False:
+            return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+
+    if _date < nfl_season[0].week_start or _date > nfl_season[-1].week_end:
+        return NFLWeek(week=0, week_start=_date, week_end=_date)
+    else:
+        return nfl_season
+
+
+@lru_cache
 def get_data_from_db(connection_str: str, sql_query: sql.SQL, schema_name: str) -> list[Any]:
     """
     Copy data from postgres
@@ -231,36 +261,6 @@ def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
         pipeline_params.db_params.db_conn_uri, sql_query, pipeline_params.db_params.schema_name  # type: ignore
     )
     return player_key_list
-
-
-@task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=7))
-def get_week(
-    _date: datetime | None = None,
-    get_all_weeks: bool = False,  # noqa: FBT001, FBT002
-) -> NFLWeek | list[NFLWeek]:
-    _date = (
-        _date.astimezone(timezone("America/Denver"))
-        if _date
-        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
-    )
-    labor_day = get_labor_day(_date)
-    days_to_current_wednesday = 2
-    days_to_next_tuesday = 8
-
-    nfl_season = []
-    for week in range(0, 18):
-        current_week_wednesday = labor_day + timedelta(days=((week * 7) + days_to_current_wednesday))
-        next_week_tuesday = labor_day + timedelta(days=((week * 7) + days_to_next_tuesday))
-        nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
-        nfl_season.append(nfl_week)
-
-        if _date >= current_week_wednesday and _date < next_week_tuesday and get_all_weeks is False:
-            return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
-
-    if _date < nfl_season[0].week_start or _date > nfl_season[-1].week_end:
-        return NFLWeek(week=0, week_start=_date, week_end=_date)
-    else:
-        return nfl_season
 
 
 @task
@@ -326,7 +326,6 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     current_date = pipeline_params.current_date.astimezone(timezone("America/Denver")).date()  # type: ignore
     current_day_of_week = current_date.weekday()  # type: ignore
     may_first = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
-    end_of_regular_season = nfl_end_week - 3
 
     end_points = []
     # preseason or offseason
@@ -336,29 +335,19 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
             end_points += PRESEASON_END_POINTS
         # offseason
         if current_date < may_first and current_date >= nfl_end_date:  # type: ignore
-            end_points += PRESEASON_END_POINTS
-
+            end_points += OFFSEASON_END_POINTS
     # regular season -> live or weekly
-    if current_week > OFFSEASON_WEEK:
-        if current_week < nfl_end_week:
-            if current_day_of_week == TUESDAY:
-                end_points += BEGINNING_OF_WEEK_END_POINTS
-
-            if current_day_of_week in [MONDAY, THURSDAY, SUNDAY]:
-                end_points += LIVE_END_POINTS
-
-        if current_week < end_of_regular_season and current_day_of_week == SATURDAY:
+    if current_week > OFFSEASON_WEEK and current_week < nfl_end_week:
+        # get prior week score adjustments and next week matchups
+        if current_day_of_week == TUESDAY:
+            end_points += BEGINNING_OF_WEEK_END_POINTS
+            end_points += LIVE_END_POINTS
+        # get player data live
+        if current_day_of_week in [THURSDAY, SUNDAY, MONDAY]:
+            end_points += LIVE_END_POINTS
+        # get player pct owned and roster before Sunday
+        if current_day_of_week == SATURDAY:
             end_points += BEFORE_MAIN_SLATE_WEEKLY_END_POINTS
-
-    # postseason -> live or weekly
-    if current_week > end_of_regular_season:
-        if current_week < nfl_end_week:
-            if current_day_of_week == FRIDAY:
-                end_points += BEFORE_MAIN_SLATE_WEEKLY_END_POINTS
-
-            if current_day_of_week == SATURDAY:
-                end_points += LIVE_END_POINTS
-
     # following end_points are require looping over all players for full data
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
 
