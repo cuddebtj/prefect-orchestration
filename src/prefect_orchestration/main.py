@@ -108,7 +108,7 @@ def extract_data(
     pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
 ) -> tuple[dict, YahooParseBase]:
     try:
-        resp, data_parser = extractor(pipeline_params, end_point_params, yahoo_api)
+        resp, data_parser = extractor(pipeline_params, end_point_params, yahoo_api)  # type: ignore
         return resp, data_parser
 
     except Exception as e:
@@ -186,9 +186,11 @@ def extract_transform_load(
         resp, data_parser = extract_data(pipeline_params, end_point_params, yahoo_api)
 
         db_params.schema_name = "yahoo_json"
+        db_params.table_name = end_point_params.end_point.replace("get_", "")
         load_raw = load_raw_data(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
         db_params.schema_name = "yahoo_data"
+        db_params.table_name = None
         parsed_data = parse_data(data_parser=data_parser, end_point_params=end_point_params)
 
         load_parse = []

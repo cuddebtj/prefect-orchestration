@@ -407,7 +407,7 @@ def extractor(
             season=pipeline_params.current_season,
             league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -418,7 +418,7 @@ def extractor(
             season=pipeline_params.current_season,
             league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -429,7 +429,7 @@ def extractor(
             season=pipeline_params.current_season,
             league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -440,7 +440,7 @@ def extractor(
             season=pipeline_params.current_season,
             league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -451,7 +451,7 @@ def extractor(
             season=pipeline_params.current_season,
             league_key=pipeline_params.league_key,
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -460,7 +460,7 @@ def extractor(
         parser = TeamParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -477,7 +477,7 @@ def extractor(
             start=end_point_params.start,  # type: ignore
             end=end_point_params.end,  # type: ignore
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser  # type: ignore
 
@@ -492,7 +492,7 @@ def extractor(
             start=end_point_params.start,  # type: ignore
             end=end_point_params.end,  # type: ignore
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -509,7 +509,7 @@ def extractor(
             start=end_point_params.start,  # type: ignore
             end=end_point_params.end,  # type: ignore
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -526,7 +526,7 @@ def extractor(
             start=end_point_params.start,  # type: ignore
             end=end_point_params.end,  # type: ignore
             end_point=end_point_params.end_point,
-            week=pipeline_params.current_week,
+            week=str(pipeline_params.current_week),
         )
         return resp, parser
 
@@ -680,12 +680,36 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
 def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     schema_name = "yahoo_data"
     table_name = f"{schema_name}.{db_params.table_name}"
-    resp_table_df.write_database(
-        table_name=table_name,
-        connection=db_params.db_conn_uri.get_secret_value(),
-        engine="adbc",
-    )
-    logger.info("Dataframe successfully appended to database.")
+
+    copy_statement = "COPY {0} ({1}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
+    column_names = [sql.Identifier(col) for col in resp_table_df.columns]
+    copy_query = sql.SQL(copy_statement).format(sql.Identifier(table_name), *column_names)  # type: ignore
+
+    file_buffer = StringIO()  # type: ignore
+    resp_table_df.write_csv(file_buffer)
+    file_buffer.seek(0)
+
+    conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
+    logger.info("Connection to postgres database successful.")
+
+    try:
+        curs = conn.cursor()
+
+        with curs.copy(copy_query) as copy:
+            copy.write(file_buffer.read())
+
+        status_msg = curs.statusmessage
+        logger.info(f"Parsed dataframe copied successfully.\n\t{status_msg}")
+
+    except (Exception, psycopg.DatabaseError) as error:  # type: ignore
+        logger.exception(f"Error with database:\n\n{error}\n\n")
+        conn.rollback()
+        raise error
+
+    finally:
+        conn.commit()
+        conn.close()
+        logger.info("Postgres connection closed.")
 
 
 @task
