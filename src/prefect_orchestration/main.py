@@ -16,6 +16,7 @@ from prefect_orchestration.modules.utils import (
     PipelineConfiguration,
     PipelineParameters,
     chunk_list_twenty_five,
+    define_pipeline_schedules,
     determine_end_points,
     df_to_db,
     extractor,
@@ -303,46 +304,25 @@ if __name__ == "__main__":
     anchor_timezone = "America/Denver"
     nfl_season = get_week(current_date, True)
 
-    off_season_anchor = datetime(current_date.year, 3, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver"))
-    off_season_schedule = construct_schedule(
-        anchor_date=off_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
-    )
-    main_yahoo_flow.serve(
-        name="off-season-flow",
-        description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
-        schedule=off_season_schedule,
-        parameters={"current_date": current_date},
-    )
-
-    pre_season_anchor = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver"))
-    pre_season_schedule = construct_schedule(
-        anchor_date=pre_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
-    )
-    main_yahoo_flow.serve(
-        name="pre-season-flow",
-        description="Export league data from Yahoo Fantasy Sports API to Supabase during the pre-season.",
-        schedule=pre_season_schedule,
-        parameters={"current_date": current_date},
-    )
-
-    regular_season_anchor = nfl_season[0].week_start
-    regular_season_schedule = construct_schedule(
-        anchor_date=regular_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
-    )
-    main_yahoo_flow.serve(
-        name="regular-season-flow",
+    sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules()
+    sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
+    weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
+    off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
+    main_yahoo_flow.serve(  # type: ignore
+        name="sunday-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
-        schedule=regular_season_schedule,
+        schedule=sunday_schedule,
         parameters={"current_date": current_date},
     )
-
-    post_season_anchor = nfl_season[-3].week_start
-    post_season_schedule = construct_schedule(
-        anchor_date=post_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
-    )
-    main_yahoo_flow.serve(
-        name="post-season-flow",
+    main_yahoo_flow.serve(  # type: ignore
+        name="weekly-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
-        schedule=post_season_schedule,
+        schedule=weekly_schedule,
+        parameters={"current_date": current_date},
+    )
+    main_yahoo_flow.serve(  # type: ignore
+        name="off-pre-season-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
+        schedule=off_pre_schedule,
         parameters={"current_date": current_date},
     )

@@ -75,10 +75,10 @@ def notify_discord(flow, flow_run, state):
 def get_file_from_bucket(file: str) -> None:
     gcp_credentials = GcpCredentials.load("google-storage-credentials")
     gcs_bucket = GcsBucket(bucket="men-of-madison", gcp_credentials=gcp_credentials)
-    gcs_bucket.download_object_to_path(file, file)
+    gcs_bucket.download_object_to_path(file, file)  # type: ignore
 
 
 def upload_file_to_bucket(file: str) -> None:
     gcp_credentials = GcpCredentials.load("google-storage-credentials")
     gcs_bucket = GcsBucket(bucket="men-of-madison", gcp_credentials=gcp_credentials)
-    gcs_bucket.upload_from_path(file, file)
+    gcs_bucket.upload_from_path(file, file)  # type: ignore

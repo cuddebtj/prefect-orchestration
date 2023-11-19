@@ -2,7 +2,6 @@ import calendar
 import json
 import logging
 import math
-import os
 from collections import deque, namedtuple
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ from io import StringIO
 from typing import Any
 
 import psycopg
+from dateutil.rrule import MINUTELY, MO, MONTHLY, SA, SU, TH, TU, WEEKLY, rrule
 from dotenv import load_dotenv
 from polars import DataFrame
 from prefect import task
@@ -99,14 +99,48 @@ class PipelineConfiguration:
     player_key_list: list[str] | None
 
 
+def define_pipeline_schedules() -> tuple[str, str, str]:
+    current_day = datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
+    nfl_season = get_week(current_day, get_all_weeks=True)
+    start_date = nfl_season[0].week_start
+    end_date = nfl_season[-2].week_end + timedelta(days=1)
+
+    sunday_schedule = rrule(
+        freq=MINUTELY,
+        dtstart=start_date,
+        interval=5,
+        until=end_date,
+        byweekday=SU,
+        byhour=range(6, 23),
+    )
+    weekly_schedule = rrule(
+        freq=WEEKLY,
+        dtstart=start_date,
+        interval=1,
+        until=end_date + timedelta(days=1),
+        byweekday=(MO, TU, TH, SA),
+        byhour=(11, 17),
+    )
+    off_pre_schedule = rrule(
+        freq=MONTHLY,
+        dtstart=datetime(current_day.year, 1, 1),  # noqa: DTZ001
+        interval=1,
+        until=datetime(current_day.year, 12, 31),  # noqa: DTZ001
+        bysetpos=1,
+        byweekday=MO,
+        bymonth=(5, 9),
+    )
+    return str(sunday_schedule), str(weekly_schedule), str(off_pre_schedule)
+
+
 @lru_cache
-def get_labor_day(_date: datetime) -> date:
+def get_labor_day(_date: date) -> date:
     """
     Calculates when Labor day is of the given year
     """
     year = _date.year
     september = 9
-    if _date < datetime(year, 3, 1, tzinfo=timezone("America/Denver")):
+    if _date < datetime(year, 3, 1, tzinfo=timezone("America/Denver")).date():
         year -= 1
     mycal = calendar.Calendar(0)
     cal = mycal.monthdatescalendar(year, september)
@@ -189,12 +223,12 @@ def get_week(
     _date: datetime | None = None,
     get_all_weeks: bool = False,  # noqa: FBT001, FBT002
 ) -> NFLWeek | list[NFLWeek]:
-    _date = (
-        _date.astimezone(timezone("America/Denver"))
+    day_date = (
+        _date.astimezone(timezone("America/Denver")).date()
         if _date
-        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
+        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver")).date()
     )
-    labor_day = get_labor_day(_date)
+    labor_day = get_labor_day(day_date)
     days_to_current_wednesday = 2
     days_to_next_tuesday = 8
 
@@ -205,11 +239,11 @@ def get_week(
         nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
         nfl_season.append(nfl_week)
 
-        if _date >= current_week_wednesday and _date < next_week_tuesday and get_all_weeks is False:
+        if day_date >= current_week_wednesday and day_date < next_week_tuesday and get_all_weeks is False:
             return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
 
-    if _date < nfl_season[0].week_start or _date > nfl_season[-1].week_end:
-        return NFLWeek(week=0, week_start=_date, week_end=_date)
+    if day_date < nfl_season[0].week_start or day_date > nfl_season[-1].week_end:
+        return NFLWeek(week=0, week_start=day_date, week_end=day_date)
     else:
         return nfl_season
 
