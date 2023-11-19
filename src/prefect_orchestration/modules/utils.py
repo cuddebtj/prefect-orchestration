@@ -221,7 +221,7 @@ def get_week(
         if current_date >= current_week_wednesday and current_date < next_week_tuesday and get_all_weeks is False:
             return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
 
-    if current_date < nfl_season[0].week_start or current_date > nfl_season[-1].week_end:
+    if current_date < nfl_season[0].week_start or current_date > nfl_season[-1].week_end and get_all_weeks is False:
         return NFLWeek(week=0, week_start=current_date, week_end=current_date)
     else:
         return nfl_season
