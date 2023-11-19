@@ -1,16 +1,18 @@
 from prefect.blocks.notifications import DiscordWebhook
+from prefect.client.schemas.objects import Flow, FlowRun, State
 from prefect.settings import PREFECT_API_URL
 from prefect_gcp import GcpCredentials, GcsBucket
 
 
-def notify_discord(flow, flow_run, state):
+def notify_discord(flow: Flow, flow_run: FlowRun, state: State) -> None:
     discord_webhook_block = DiscordWebhook.load("mom-notifications")
     body = """
-# @cudde2
+# <@cudde2>
 
-## JOB: {flow_name} failed
+## FAILED JOB: *{flow_name}*
 
-### Tags:{flow_tags}
+### Tags:
+- {flow_tags}
 
 ### INFO:
 
@@ -20,17 +22,17 @@ def notify_discord(flow, flow_run, state):
 - https://{prefect_url_2}/flow-run/{flow_id_1}
 - flow-run/{flow_id_2} | the flow run in the UI>
 - State Name: {state_name}
-- State Type: {state_id}
 - State Data: {state_data}
 - Deployment ID: {deployment_id}
 - Parent Task ID: {parent_task_run_id}
 
-### Parameters:{flow_parameters}
+### Parameters:
+- {flow_parameters}
 """
     discord_webhook_block.notify(  # type: ignore
         body.format(
             flow_name=flow.name,
-            flow_tags="\n- ".join(flow.tags),
+            flow_tags="\n- ".join(flow_run.tags) if flow_run.tags else "\n- None",
             flow_start_time=flow_run.expected_start_time,
             total_run_time=flow_run.total_run_time,
             prefect_url_1=PREFECT_API_URL.value(),
@@ -42,7 +44,7 @@ def notify_discord(flow, flow_run, state):
             state_data=state.data,
             deployment_id=flow_run.deployment_id,
             parent_task_run_id=flow_run.parent_task_run_id,
-            flow_parameters="\n- ".join(f"{k}: {v}" for k, v in flow_run.parameters.items()),
+            flow_parameters="- ".join(f"{k}: {v}\n" for k, v in flow_run.parameters.items()),
         )
     )
 

@@ -539,17 +539,20 @@ if __name__ == "__main__":
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
         schedule=sunday_schedule,
         parameters={"current_date": current_date},
+        tags=["yahoo", "sunday", "live"],
     )
     weekly_flow = weekly_yahoo_flow.to_deployment(  # type: ignore
         name="weekly-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
         parameters={"current_date": current_date},
+        tags=["yahoo", "weekly"],
     )
     off_pre_flow = off_pre_yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
         parameters={"current_date": current_date},
+        tags=["yahoo", "preseason", "offseason"],
     )
     serve(sunday_flow, weekly_flow, off_pre_flow)  # type: ignore
