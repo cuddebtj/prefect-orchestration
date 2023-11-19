@@ -3,7 +3,7 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from polars import DataFrame
-from prefect import flow
+from prefect import flow, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
 from prefect.task_runners import SequentialTaskRunner
@@ -552,4 +552,4 @@ if __name__ == "__main__":
         schedule=off_pre_schedule,
         parameters={"current_date": current_date},
     )
-    serve(sunday_flow, weekly_flow, off_pre_flow)
+    serve(sunday_flow, weekly_flow, off_pre_flow)  # type: ignore

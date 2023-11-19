@@ -19,9 +19,10 @@ from prefect.tasks import task_input_hash
 from psycopg import sql
 from pydantic import SecretStr
 from pytz import timezone
+from yahoo_export import Config, YahooAPI
 from yahoo_parser import GameParser, LeagueParser, PlayerParser, TeamParser
 
-from prefect_orchestration.modules.prefect_blocks import YahooConfigBlock, upload_file_to_bucket
+from prefect_orchestration.modules.prefect_blocks import upload_file_to_bucket
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ class PipelineParameters:
         "current_week",
         "team_key_list",
     ]
-    yahoo_export_config: YahooConfigBlock
+    yahoo_export_config: Config
     db_params: DatabaseParameters
     num_of_teams: int | None
     current_date: datetime | None
@@ -312,7 +313,7 @@ def chunk_list_twenty_five(input_list: list[str]) -> Generator[list[str], None, 
 
 @task
 def get_parameters(
-    consumer_key: str | None = None,
+    consumer_key: SecretStr | None = None,
     consumer_secret: SecretStr | None = None,
     db_conn_uri: str | None = None,
     current_date: datetime | None = None,
@@ -332,13 +333,12 @@ def get_parameters(
         table_name=table_name,
     )
 
-    yahoo_export_config = YahooConfigBlock(
+    yahoo_export_config = Config(
         consumer_key=consumer_key,  # type: ignore
         consumer_secret=consumer_secret,  # type: ignore
         current_nfl_week=0,
         current_nfl_season=season,
         league_info={"season": season, "game_id": game_id, "league_id": league_id},
-        validate=False,
     )
 
     pipeline_params = PipelineParameters(
@@ -481,7 +481,7 @@ def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], s
         "end",
     ]
 
-    yahoo_api = pipeline_config.pipeline_params.yahoo_export_config.get_yahoo_session()
+    yahoo_api = YahooAPI(config=pipeline_config.pipeline_params.yahoo_export_config)
     extract_objects = {
         "get_all_game_keys": (yahoo_api.get_all_game_keys, GameParser),
         "get_game": (yahoo_api.get_game, GameParser),
@@ -524,7 +524,7 @@ def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], s
             **parse_args,
         )
 
-    upload_file_to_bucket(pipeline_config.pipeline_params.yahoo_export_config.token_file_path)
+    upload_file_to_bucket(pipeline_config.pipeline_params.yahoo_export_config.token_file_path)  # type: ignore
 
     return resp, query_ts, parser
 

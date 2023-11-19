@@ -1,30 +1,6 @@
-from typing import Any
-
-from prefect.blocks.core import Block
 from prefect.blocks.notifications import DiscordWebhook
 from prefect.settings import PREFECT_API_URL
 from prefect_gcp import GcpCredentials, GcsBucket
-from yahoo_export import Config, YahooAPI
-
-
-class YahooConfigBlock(Block):
-    consumer_key: str
-    consumer_secret: str
-    current_nfl_week: int
-    current_nfl_season: int
-    league_info: dict[str, Any]
-    token_file_path: str
-
-    def get_yahoo_session(self) -> YahooAPI:
-        config = Config(
-            yahoo_consumer_key=self.consumer_key,  # type: ignore
-            yahoo_consumer_secret=self.consumer_secret,  # type: ignore
-            current_nfl_week=self.current_nfl_week,
-            current_nfl_season=self.current_nfl_season,
-            league_info=self.league_info,
-            token_file_path=self.token_file_path,
-        )
-        return YahooAPI(config=config)
 
 
 def notify_discord(flow, flow_run, state):
