@@ -7,7 +7,7 @@ from prefect_gcp import GcpCredentials, GcsBucket
 def notify_discord(flow: Flow, flow_run: FlowRun, state: State) -> None:
     discord_webhook_block = DiscordWebhook.load("mom-notifications")
     body = """
-# <@cudde2>
+# <@&cudde2>
 
 ## FAILED JOB: `{flow_name}`
 
