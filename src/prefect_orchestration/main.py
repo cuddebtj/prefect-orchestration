@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from polars import DataFrame
 from prefect import flow
 from prefect.blocks.system import Secret
+from prefect.client.schemas.schedules import construct_schedule
 from prefect.task_runners import SequentialTaskRunner
 from pydantic import SecretStr
 from pytz import timezone
@@ -134,15 +135,8 @@ def load_pipeline_list(
     num_of_teams: int,
 ) -> tuple[list[PipelineConfiguration], list[PipelineConfiguration] | None, list[PipelineConfiguration] | None]:
     try:
-        db_conn_uri = (
-            os.getenv("SUPABASE_CONN_URI_YAHOO") if ENV_STATUS == "local" else Secret.load("supabase-conn-uri").get()  # type: ignore
-        )
-
         flow_params = get_parameters(
             current_date=current_date,
-            consumer_key=None,
-            consumer_secret=None,
-            db_conn_uri=db_conn_uri,
             num_of_teams=num_of_teams,
             season=season,
             game_id=game_id,
@@ -209,6 +203,9 @@ def main_yahoo_flow(
             num_of_teams,
         )
         pipelines = []
+        db_conn_uri = (
+            os.getenv("SUPABASE_CONN_URI_YAHOO") if ENV_STATUS == "local" else Secret.load("supabase-conn-uri").get()  # type: ignore
+        )
 
         if pipeline_chunks[1] and pipeline_chunks[2]:
             for chunk_one, chunk_two, chunk_three in zip(
@@ -224,8 +221,9 @@ def main_yahoo_flow(
                     if ENV_STATUS == "local"
                     else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
                 )
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_one
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_one
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
                 chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
 
                 get_file_from_bucket("oauth_token_one.yaml")
@@ -242,8 +240,9 @@ def main_yahoo_flow(
                     if ENV_STATUS == "local"
                     else Secret.load("yahoo-consumer-secret-two").get()  # type: ignore
                 )
-                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_two
-                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_two
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_two)  # type: ignore
+                chunk_two.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_two)  # type: ignore
+                chunk_two.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
                 chunk_two.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_two.yaml"
 
                 get_file_from_bucket("oauth_token_two.yaml")
@@ -260,8 +259,9 @@ def main_yahoo_flow(
                     if ENV_STATUS == "local"
                     else Secret.load("yahoo-consumer-secret-three").get()  # type: ignore
                 )
-                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_three
-                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_three
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_three)  # type: ignore
+                chunk_three.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_three)  # type: ignore
+                chunk_three.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
                 chunk_three.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_three.yaml"
 
                 get_file_from_bucket("oauth_token_three.yaml")
@@ -280,8 +280,9 @@ def main_yahoo_flow(
                     if ENV_STATUS == "local"
                     else Secret.load("yahoo-consumer-secret-one").get()  # type: ignore
                 )
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = key_one
-                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = secret_one
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_key = SecretStr(key_one)  # type: ignore
+                chunk_one.pipeline_params.yahoo_export_config.yahoo_consumer_secret = SecretStr(secret_one)  # type: ignore
+                chunk_one.pipeline_params.db_params.db_conn_uri = db_conn_uri  # type: ignore
                 chunk_one.pipeline_params.yahoo_export_config.token_file_path = "oauth_token_one.yaml"
 
                 get_file_from_bucket("oauth_token_one.yaml")
@@ -298,4 +299,48 @@ def main_yahoo_flow(
 
 if __name__ == "__main__":
     current_date = datetime.now(tz=timezone("UTC"))
-    main_yahoo_flow(current_date)
+    anchor_timezone = "America/Denver"
+
+    off_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    off_season_schedule = construct_schedule(
+        anchor_date=off_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
+    )
+    main_yahoo_flow.serve(
+        name="off-season-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
+        schedule=off_season_schedule,
+        parameters={"current_date": current_date},
+    )
+
+    pre_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    pre_season_schedule = construct_schedule(
+        anchor_date=pre_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
+    )
+    main_yahoo_flow.serve(
+        name="pre-season-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the pre-season.",
+        schedule=pre_season_schedule,
+        parameters={"current_date": current_date},
+    )
+
+    regular_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    regular_season_schedule = construct_schedule(
+        anchor_date=regular_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
+    )
+    main_yahoo_flow.serve(
+        name="regular-season-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
+        schedule=regular_season_schedule,
+        parameters={"current_date": current_date},
+    )
+
+    post_season_anchor = datetime(2021, 5, 1, tzinfo=timezone("UTC"))
+    post_season_schedule = construct_schedule(
+        anchor_date=post_season_anchor, timezone=anchor_timezone, cron="0 15 15 5 *"
+    )
+    main_yahoo_flow.serve(
+        name="post-season-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
+        schedule=post_season_schedule,
+        parameters={"current_date": current_date},
+    )

@@ -1,8 +1,9 @@
+import calendar
 import json
 import logging
 import math
 import os
-from collections import deque
+from collections import deque, namedtuple
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -27,6 +28,8 @@ load_dotenv()
 logger = logging.getLogger(__name__)  # type: ignore
 
 PARSE_CLASS = GameParser | LeagueParser | TeamParser | PlayerParser
+
+NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 
 
 @dataclass
@@ -66,16 +69,7 @@ class PipelineParameters:
         self.current_season = (
             self.current_season if self.current_season else self.yahoo_export_config.league_info["season"]
         )
-        self.current_week = (
-            self.current_week
-            if self.current_week
-            else get_week(
-                self.db_params.db_conn_uri,  # type: ignore
-                self.game_id,
-                self.current_date.date(),
-                self.db_params.db_conn_uri.schema_name,  # type: ignore
-            )
-        )
+        self.current_week = self.current_week if self.current_week else get_week(self.current_date).week  # type: ignore
         self.team_key_list = (
             self.team_key_list
             if self.team_key_list
@@ -103,6 +97,23 @@ class PipelineConfiguration:
     page_start: int | None
     retrieval_limit: int | None
     player_key_list: list[str] | None
+
+
+@lru_cache
+def get_labor_day(_date: datetime) -> date:
+    """
+    Calculates when Labor day is of the given year
+    """
+    year = _date.year
+    september = 9
+    if _date < datetime(year, 3, 1, tzinfo=timezone("America/Denver")):
+        year -= 1
+    mycal = calendar.Calendar(0)
+    cal = mycal.monthdatescalendar(year, september)
+    if cal[0][0].month == september:
+        return cal[0][0]
+    else:
+        return cal[1][0]
 
 
 END_POINT_TABLE_MAP = {
@@ -145,6 +156,32 @@ END_POINT_TABLE_MAP = {
     "get_player_pct_owned_player_df": "players",
     "get_player_pct_owned_pct_owned_meta_df": "player_pct_owned",
 }
+
+PRESEASON_END_POINTS = [
+    "get_game",
+    "get_league_preseason",
+    "get_league_draft_result",
+    "get_player",
+    "get_player_draft_analysis",
+]  # between june 1st and september 1st
+OFFSEASON_END_POINTS = ["get_all_game_keys", "get_league_offseason"]  # between march 1st and june 1st
+BEGINNING_OF_WEEK_END_POINTS = ["get_league_matchup"]  # after the monday night game or the tuesday morning after
+BEFORE_MAIN_SLATE_WEEKLY_END_POINTS = [
+    "get_player_pct_owned",
+    "get_roster",
+]  # before kickoff of first slate of games, so saturday night
+LIVE_END_POINTS = [
+    "get_roster",
+    "get_player_stat",
+]  # while games are being played, #TODO: only for rosterd players?
+
+MONDAY = 0
+TUESDAY = 1
+THURSDAY = 3
+FRIDAY = 4
+SATURDAY = 5
+SUNDAY = 6
+OFFSEASON_WEEK = 0
 
 
 @lru_cache
@@ -196,16 +233,34 @@ def get_player_key_list(pipeline_params: PipelineParameters) -> list[str]:
     return player_key_list
 
 
-@task
-def get_week(conn_str: str, game_id: int | str, _date: date, schema_name: str) -> int:
-    sql_str = (
-        "select distinct game_week from yahoo_data.game_weeks "
-        "where game_id = %s and %s::date between game_week_start::date and game_week_end::date;"
+@task(cache_key_fn=task_input_hash, cache_expiration=timedelta(days=7))
+def get_week(
+    _date: datetime | None = None,
+    get_all_weeks: bool = False,  # noqa: FBT001, FBT002
+) -> NFLWeek | list[NFLWeek]:
+    _date = (
+        _date.astimezone(timezone("America/Denver"))
+        if _date
+        else datetime.now(timezone("UTC")).astimezone(timezone("America/Denver"))
     )
-    sql_query = sql.SQL(sql_str).format(sql.Literal(game_id), sql.Literal(_date))
-    current_week = get_data_from_db(conn_str, sql_query, schema_name)  # type: ignore
-    current_week = 0 if not current_week else current_week[0]
-    return int(current_week)
+    labor_day = get_labor_day(_date)
+    days_to_current_wednesday = 2
+    days_to_next_tuesday = 8
+
+    nfl_season = []
+    for week in range(0, 18):
+        current_week_wednesday = labor_day + timedelta(days=((week * 7) + days_to_current_wednesday))
+        next_week_tuesday = labor_day + timedelta(days=((week * 7) + days_to_next_tuesday))
+        nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+        nfl_season.append(nfl_week)
+
+        if _date >= current_week_wednesday and _date < next_week_tuesday and get_all_weeks is False:
+            return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+
+    if _date < nfl_season[0].week_start or _date > nfl_season[-1].week_end:
+        return NFLWeek(week=0, week_start=_date, week_end=_date)
+    else:
+        return nfl_season
 
 
 @task
@@ -223,10 +278,10 @@ def chunk_list_twenty_five(input_list: list[str]) -> Generator[list[str], None, 
 
 @task
 def get_parameters(
-    current_date: datetime | None = None,
-    consumer_key: SecretStr | None = None,
+    consumer_key: str | None = None,
     consumer_secret: SecretStr | None = None,
     db_conn_uri: str | None = None,
+    current_date: datetime | None = None,
     num_of_teams: int | None = None,
     season: int = 2023,
     game_id: int = 423,
@@ -235,9 +290,6 @@ def get_parameters(
     table_name: str = "test",
 ) -> PipelineParameters:
     current_date = current_date if current_date else datetime.now(timezone("UTC"))
-    consumer_key = consumer_key if consumer_key else SecretStr(os.getenv("YAHOO_CONSUMER_KEY"))  # type: ignore
-    consumer_secret = consumer_secret if consumer_secret else SecretStr(os.getenv("YAHOO_CONSUMER_SECRET"))  # type: ignore
-    db_conn_uri = db_conn_uri if db_conn_uri else os.getenv("LOCAL_POSTGRES_CONN")  # type: ignore
     num_of_teams = num_of_teams if num_of_teams else 10
 
     db_conn_params = DatabaseParameters(
@@ -266,69 +318,46 @@ def get_parameters(
 
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
-    current_week = pipeline_params.current_week  # type: ignore
-    current_date = pipeline_params.current_date.date()  # type: ignore
-    preseason_end_points = [
-        "get_game",
-        "get_league_preseason",
-        "get_league_draft_result",
-        "get_player",
-        "get_player_draft_analysis",
-    ]  # between june 1st and september 1st
-    offseason_end_points = ["get_all_game_keys", "get_league_offseason"]  # between march 1st and june 1st
-    beginning_of_week_end_points = ["get_league_matchup"]  # after the monday night game or the tuesday morning after
-    before_main_slate_weekly_end_points = [
-        "get_player_pct_owned",
-        "get_roster",
-    ]  # before kickoff of first slate of games, so saturday night
-    live_end_points = [
-        "get_roster",
-        "get_player_stat",
-    ]  # while games are being played, #TODO: only for rosterd players?
-
-    day_of_week = current_date.weekday()  # type: ignore
-    MONDAY = 0  # noqa: N806
-    TUESDAY = 1  # noqa: N806
-    THURSDAY = 3  # noqa: N806
-    FRIDAY = 4  # noqa: N806
-    SATURDAY = 5  # noqa: N806
-    SUNDAY = 6  # noqa: N806
-    SEPTEMBER_FIRST = datetime(current_date.year, 9, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
-    JUNE_FIRST = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
-    MARCH_FIRST = datetime(current_date.year, 3, 1, tzinfo=timezone("UTC")).date()  # noqa: N806 # type: ignore
-    OFFSEASON_WEEK = 0  # noqa: N806
-    LAST_REGULAR_SEASON_WEEK = 15  # noqa: N806
-    LAST_WEEK = 18  # noqa: N806
+    nfl_season = get_week(pipeline_params.current_date, get_all_weeks=True)
+    current_week = pipeline_params.current_week
+    nfl_start_date = nfl_season[0].week_start
+    nfl_end_date = nfl_season[-1].week_end
+    nfl_end_week = nfl_season[-1].week
+    current_date = pipeline_params.current_date.astimezone(timezone("America/Denver")).date()  # type: ignore
+    current_day_of_week = current_date.weekday()  # type: ignore
+    may_first = datetime(current_date.year, 6, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
+    end_of_regular_season = nfl_end_week - 3
 
     end_points = []
-
     # preseason or offseason
     if current_week == OFFSEASON_WEEK:
-        if current_date < SEPTEMBER_FIRST and current_date >= JUNE_FIRST:  # type: ignore
-            end_points += preseason_end_points
-        if current_date < JUNE_FIRST and current_date >= MARCH_FIRST:  # type: ignore
-            end_points += offseason_end_points
+        # preseason
+        if current_date < nfl_start_date and current_date >= may_first:  # type: ignore
+            end_points += PRESEASON_END_POINTS
+        # offseason
+        if current_date < may_first and current_date >= nfl_end_date:  # type: ignore
+            end_points += PRESEASON_END_POINTS
 
     # regular season -> live or weekly
     if current_week > OFFSEASON_WEEK:
-        if current_week < LAST_WEEK:
-            if day_of_week == TUESDAY:
-                end_points += beginning_of_week_end_points
+        if current_week < nfl_end_week:
+            if current_day_of_week == TUESDAY:
+                end_points += BEGINNING_OF_WEEK_END_POINTS
 
-            if day_of_week in [MONDAY, THURSDAY, SUNDAY]:
-                end_points += live_end_points
+            if current_day_of_week in [MONDAY, THURSDAY, SUNDAY]:
+                end_points += LIVE_END_POINTS
 
-        if current_week < LAST_REGULAR_SEASON_WEEK and day_of_week == SATURDAY:
-            end_points += before_main_slate_weekly_end_points
+        if current_week < end_of_regular_season and current_day_of_week == SATURDAY:
+            end_points += BEFORE_MAIN_SLATE_WEEKLY_END_POINTS
 
     # postseason -> live or weekly
-    if current_week > LAST_REGULAR_SEASON_WEEK:
-        if current_week < LAST_WEEK:
-            if day_of_week == FRIDAY:
-                end_points += before_main_slate_weekly_end_points
+    if current_week > end_of_regular_season:
+        if current_week < nfl_end_week:
+            if current_day_of_week == FRIDAY:
+                end_points += BEFORE_MAIN_SLATE_WEEKLY_END_POINTS
 
-            if day_of_week == SATURDAY:
-                end_points += live_end_points
+            if current_day_of_week == SATURDAY:
+                end_points += LIVE_END_POINTS
 
     # following end_points are require looping over all players for full data
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
@@ -476,6 +505,7 @@ def extractor(pipeline_config: PipelineConfiguration) -> tuple[dict[str, str], s
     return resp, query_ts, parser
 
 
+@lru_cache
 def get_parsing_methods(end_point: str, data_parser: PARSE_CLASS) -> dict[str, Callable]:
     match end_point:
         case "get_all_game_keys":
@@ -580,7 +610,7 @@ def parse_response(data_parser: PARSE_CLASS, end_point: str) -> dict[str, DataFr
 
 
 @task
-def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str]) -> None:
+def json_to_db(data: dict, params_dict: PipelineParameters, columns: list[str] | None = None) -> None:
     """
     Copy data into postgres
     """
