@@ -1,4 +1,5 @@
 import calendar
+import io
 import json
 import logging
 import math
@@ -8,7 +9,6 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
-from io import StringIO
 from typing import Any
 
 import psycopg
@@ -648,7 +648,7 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
     column_names = [sql.Identifier(col) for col in columns] if columns else [sql.Identifier("yahoo_json")]
     copy_query = sql.SQL(copy_statement).format(sql.Identifier(db_params.table_name), *column_names)  # type: ignore
 
-    file_buffer = StringIO()  # type: ignore
+    file_buffer = io.StringIO()  # type: ignore
     json.dump(raw_data, file_buffer)  # type: ignore
     file_buffer.seek(0)
 
@@ -679,14 +679,14 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
 @task
 def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     schema_name = "yahoo_data"
-    table_name = f"{schema_name}.{db_params.table_name}"
+    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
 
-    copy_statement = "COPY {0} ({1}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
-    column_names = [sql.Identifier(col) for col in resp_table_df.columns]
-    copy_query = sql.SQL(copy_statement).format(sql.Identifier(table_name), *column_names)  # type: ignore
+    copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
+    column_names = sql.SQL(", ").join([sql.Identifier(col) for col in resp_table_df.columns])
+    copy_query = sql.SQL(copy_statement).format(table_name=sql.Identifier(db_params.table_name), column_names=column_names)  # type: ignore
 
-    file_buffer = StringIO()  # type: ignore
-    resp_table_df.write_csv(file_buffer)
+    file_buffer = io.BytesIO()  # type: ignore
+    resp_table_df.write_csv(file_buffer, include_header=True, separator=",", line_terminator="\n", quote_style="always")
     file_buffer.seek(0)
 
     conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
@@ -694,6 +694,7 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
 
     try:
         curs = conn.cursor()
+        curs.execute(set_schema_statement)
 
         with curs.copy(copy_query) as copy:
             copy.write(file_buffer.read())
