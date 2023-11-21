@@ -121,7 +121,6 @@ def get_configuration_and_split_pipelines(
 
 
 @flow(
-    task_runner=SequentialTaskRunner(),
     validate_parameters=False,
     on_failure=[notify_discord_failure],
     on_cancellation=[notify_discord_cancellation],
@@ -133,29 +132,25 @@ def extract_transform_load(
     yahoo_api: YahooAPI,
 ) -> bool:
     logger = get_run_logger()  # type: ignore
-    try:
-        logger.info("Extracting data from Yahoo API.")
-        resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
+    logger.info("Extracting data from Yahoo API.")
+    resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
 
-        db_params.schema_name = "yahoo_json"
-        db_params.table_name = end_point_param.end_point.replace("get_", "")
-        logger.info("Writing raw data to database.")
-        load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
+    db_params.schema_name = "yahoo_json"
+    db_params.table_name = end_point_param.end_point.replace("get_", "")
+    logger.info("Writing raw data to database.")
+    load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
-        db_params.schema_name = "yahoo_data"
-        db_params.table_name = None
-        logger.info("Parsing raw data to tables.")
-        parsed_data = parse_response(data_parser, end_point_param.end_point)
+    db_params.schema_name = "yahoo_data"
+    db_params.table_name = None
+    logger.info("Parsing raw data to tables.")
+    parsed_data = parse_response(data_parser, end_point_param.end_point)
 
-        logger.info("Writing tables to database.")
-        for table_name, table_df in parsed_data.items():
-            db_params.table_name = table_name
-            df_to_db(resp_table_df=table_df, db_params=db_params)
+    logger.info("Writing tables to database.")
+    for table_name, table_df in parsed_data.items():
+        db_params.table_name = table_name
+        df_to_db(resp_table_df=table_df, db_params=db_params)
 
-        return True
-
-    except Exception as e:
-        raise e
+    return True
 
 
 @flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
