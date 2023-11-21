@@ -138,6 +138,7 @@ def extract_transform_load(
     logger = get_run_logger()  # type: ignore
     logger.info("Extracting data from Yahoo API.")
     resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
+    logger.info(f"Extracting from end_point {end_point_param.end_point} successfull.")
 
     db_params.schema_name = "yahoo_json"
     db_params.table_name = end_point_param.end_point.replace("get_", "")
