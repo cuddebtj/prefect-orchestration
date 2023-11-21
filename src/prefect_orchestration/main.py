@@ -41,7 +41,11 @@ load_dotenv()
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
 
 
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
+@flow(
+    task_runner=SequentialTaskRunner(),
+    on_failure=[notify_discord_failure],
+    on_cancellation=[notify_discord_cancellation],
+)
 def get_parameters(
     db_conn_uri: SecretStr,
     current_timestamp: datetime,
