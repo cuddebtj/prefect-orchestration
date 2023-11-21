@@ -175,7 +175,11 @@ def load_pipeline_list(
         raise e
 
 
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
+@flow(
+    task_runner=SequentialTaskRunner(),
+    on_failure=[notify_discord_failure],
+    on_cancellation=[notify_discord_cancellation],
+)
 def extract_transform_load(
     pipeline_params: PipelineParameters,
     db_params: DatabaseParameters,
@@ -193,17 +197,13 @@ def extract_transform_load(
         db_params.table_name = None
         parsed_data = parse_data(data_parser=data_parser, end_point_params=end_point_params)
 
-        load_parse = []
         for table_name, table_df in parsed_data.items():
             db_params.table_name = table_name
-            load_parse.append(
-                load_parsed_data.submit(  # type: ignore
-                    resp_table_df=table_df,
-                    db_params=db_params,
-                )
+            load_parsed_data(
+                resp_table_df=table_df,
+                db_params=db_params,
             )
 
-        parsed_load = [i for p in load_parse for i in p.result()]  # noqa: F841
         return True
 
     except Exception as e:
