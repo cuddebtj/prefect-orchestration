@@ -4,7 +4,6 @@ from datetime import datetime
 from prefect import flow, get_run_logger, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
-from prefect.task_runners import SequentialTaskRunner
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import YahooAPI
