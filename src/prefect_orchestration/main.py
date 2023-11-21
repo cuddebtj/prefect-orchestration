@@ -142,9 +142,7 @@ def extract_transform_load(
     db_params.schema_name = "yahoo_json"
     db_params.table_name = end_point_param.end_point.replace("get_", "")
     logger.info("Writing raw data to database.")
-    load_raw = json_to_db.submit(
-        raw_data=resp, db_params=db_params, columns=["yahoo_json"], wait_for=[resp]
-    )  # type: ignore
+    json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])
 
     db_params.schema_name = "yahoo_data"
     db_params.table_name = None
@@ -152,12 +150,9 @@ def extract_transform_load(
     parsed_data = parse_response(data_parser, end_point_param.end_point)  # type: ignore
 
     logger.info("Writing tables to database.")
-    df_to_db_future = []
     for table_name, table_df in parsed_data.items():
         db_params.table_name = table_name
-        df_to_db_future.append(df_to_db.submit(resp_table_df=table_df, db_params=db_params, wait_for=[parsed_data]))  # type: ignore
-
-    df_to_db_future = [x.result() for x in df_to_db_future]
+        df_to_db(resp_table_df=table_df, db_params=db_params)
 
     return True
 
