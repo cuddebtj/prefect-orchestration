@@ -128,34 +128,33 @@ def get_configuration_and_split_pipelines(
 def extract_transform_load(
     pipeline_params: PipelineParameters,
     db_params: DatabaseParameters,
-    end_point_params: list[EndPointParameters],
+    end_point_param: EndPointParameters,
     yahoo_api: YahooAPI,
 ) -> bool:
     logger = get_run_logger()  # type: ignore
-    for end_point_param in end_point_params:
-        try:
-            logger.info("Extracting data from Yahoo API.")
-            resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
+    try:
+        logger.info("Extracting data from Yahoo API.")
+        resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
 
-            db_params.schema_name = "yahoo_json"
-            db_params.table_name = end_point_param.end_point.replace("get_", "")
-            logger.info("Writing raw data to database.")
-            load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
+        db_params.schema_name = "yahoo_json"
+        db_params.table_name = end_point_param.end_point.replace("get_", "")
+        logger.info("Writing raw data to database.")
+        load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
-            db_params.schema_name = "yahoo_data"
-            db_params.table_name = None
-            logger.info("Parsing raw data to tables.")
-            parsed_data = parse_response(data_parser, end_point_param.end_point)
+        db_params.schema_name = "yahoo_data"
+        db_params.table_name = None
+        logger.info("Parsing raw data to tables.")
+        parsed_data = parse_response(data_parser, end_point_param.end_point)
 
-            logger.info("Writing tables to database.")
-            for table_name, table_df in parsed_data.items():
-                db_params.table_name = table_name
-                df_to_db(resp_table_df=table_df, db_params=db_params)
+        logger.info("Writing tables to database.")
+        for table_name, table_df in parsed_data.items():
+            db_params.table_name = table_name
+            df_to_db(resp_table_df=table_df, db_params=db_params)
 
-        except Exception as e:
-            raise e
+        return True
 
-    return True
+    except Exception as e:
+        raise e
 
 
 @flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
@@ -199,13 +198,13 @@ def yahoo_flow(
             for chunk_one, chunk_two, chunk_three in zip(
                 pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
             ):
-                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
                 pipelines.append(pipe_one)
 
-                pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
+                pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
                 pipelines.append(pipe_two)
 
-                pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)  # type: ignore
+                pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
                 pipelines.append(pipe_three)
 
             logger.info("Successfull ETL on yahoo data.")
