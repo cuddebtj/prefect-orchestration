@@ -81,7 +81,8 @@ def get_configuration_and_split_pipelines(
                             page_start=page_start,
                             retrieval_limit=retrieval_limit,
                             player_key_list=None,
-                        )
+                            wait_for=[set_end_points],
+                        )  # type: ignore
                     )
 
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
@@ -95,7 +96,8 @@ def get_configuration_and_split_pipelines(
                             page_start=None,
                             retrieval_limit=None,
                             player_key_list=chunked_player_list,
-                        )
+                            wait_for=[player_chunks, player_key_list],
+                        )  # type: ignore
                     )
 
             else:
@@ -106,7 +108,8 @@ def get_configuration_and_split_pipelines(
                         page_start=None,
                         retrieval_limit=None,
                         player_key_list=None,
-                    )
+                        wait_for=[set_end_points],
+                    )  # type: ignore
                 )
 
         end_point_list = [x.result() for x in end_point_list]
@@ -139,17 +142,22 @@ def extract_transform_load(
     db_params.schema_name = "yahoo_json"
     db_params.table_name = end_point_param.end_point.replace("get_", "")
     logger.info("Writing raw data to database.")
-    load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
+    load_raw = json_to_db.submit(
+        raw_data=resp, db_params=db_params, columns=["yahoo_json"], wait_for=[resp]
+    )  # type: ignore
 
     db_params.schema_name = "yahoo_data"
     db_params.table_name = None
     logger.info("Parsing raw data to tables.")
-    parsed_data = parse_response(data_parser, end_point_param.end_point)
+    parsed_data = parse_response(data_parser, end_point_param.end_point)  # type: ignore
 
     logger.info("Writing tables to database.")
+    df_to_db_future = []
     for table_name, table_df in parsed_data.items():
         db_params.table_name = table_name
-        df_to_db(resp_table_df=table_df, db_params=db_params)
+        df_to_db_future.append(df_to_db.submit(resp_table_df=table_df, db_params=db_params, wait_for=[parsed_data]))  # type: ignore
+
+    df_to_db_future = [x.result() for x in df_to_db_future]
 
     return True
 
