@@ -245,7 +245,7 @@ if __name__ == "__main__":
         tags=["yahoo", "preseason", "offseason"],
     )
     serve(
-        # sunday_flow,  # type: ignore
-        # weekly_flow,  # type: ignore
+        sunday_flow,  # type: ignore
+        weekly_flow,  # type: ignore
         off_pre_flow,  # type: ignore
     )
