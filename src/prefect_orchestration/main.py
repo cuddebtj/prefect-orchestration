@@ -109,6 +109,7 @@ def get_configuration_and_split_pipelines(
                     )
                 )
 
+        end_point_list = [x.result() for x in end_point_list]
         chunked_pipelines = split_pipelines(end_point_list=end_point_list)
         join_list = [str(len(x)) for x in chunked_pipelines]  # type: ignore
         logger_message = "\n\t".join(join_list)
