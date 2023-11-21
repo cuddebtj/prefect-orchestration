@@ -1,8 +1,7 @@
+import logging
 import os
 from datetime import datetime
 
-from dotenv import load_dotenv
-from polars import DataFrame
 from prefect import flow, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
@@ -10,13 +9,22 @@ from prefect.task_runners import SequentialTaskRunner
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import YahooAPI
-from yahoo_parser import YahooParseBase
 
-from prefect_orchestration.modules.prefect_blocks import (
+from prefect_orchestration.modules.blocks import (
     get_file_from_bucket,
     notify_discord_cancellation,
     notify_discord_failure,
     upload_file_to_bucket,
+)
+from prefect_orchestration.modules.tasks import (
+    determine_end_points,
+    df_to_db,
+    extractor,
+    get_endpoint_config,
+    get_yahoo_api_config,
+    json_to_db,
+    parse_response,
+    split_pipelines,
 )
 from prefect_orchestration.modules.utils import (
     DatabaseParameters,
@@ -24,21 +32,13 @@ from prefect_orchestration.modules.utils import (
     PipelineParameters,
     chunk_list_twenty_five,
     define_pipeline_schedules,
-    determine_end_points,
-    df_to_db,
-    extractor,
-    get_endpoint_config,
     get_player_key_list,
     get_week,
-    get_yahoo_api_config,
-    json_to_db,
-    parse_response,
-    split_pipelines,
 )
 
-load_dotenv()
-
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
+
+logger = logging.getLogger(__name__)  # type: ignore
 
 
 @flow(
@@ -46,7 +46,7 @@ ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
     on_failure=[notify_discord_failure],
     on_cancellation=[notify_discord_cancellation],
 )
-def get_parameters(
+def get_configuration_and_split_pipelines(
     db_conn_uri: SecretStr,
     current_timestamp: datetime,
     game_id: int | str,
@@ -54,7 +54,11 @@ def get_parameters(
     num_of_teams: int,
     start_count: int = 0,
     retrieval_limit: int = 25,
-) -> tuple[PipelineParameters, DatabaseParameters, list[EndPointParameters]]:
+) -> tuple[
+    PipelineParameters,
+    DatabaseParameters,
+    tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
+]:
     try:
         pipeline_params = PipelineParameters(
             current_timestamp=current_timestamp,
@@ -66,11 +70,11 @@ def get_parameters(
 
         db_params = DatabaseParameters(db_conn_uri=db_conn_uri, schema_name=None, table_name=None)
 
-        end_point_param_list = []
+        end_point_list = []
         for end_point in set_end_points:
             if end_point == "get_player":
                 for page_start in range(start_count, 2000, retrieval_limit):
-                    end_point_param_list.append(
+                    end_point_list.append(
                         get_endpoint_config(
                             end_point=end_point,
                             page_start=page_start,
@@ -83,7 +87,7 @@ def get_parameters(
                 player_key_list = get_player_key_list(db_params.db_conn_uri, pipeline_params.league_key)
                 player_chunks = chunk_list_twenty_five(player_key_list)
                 for chunked_player_list in player_chunks:
-                    end_point_param_list.append(
+                    end_point_list.append(
                         get_endpoint_config(
                             end_point=end_point,
                             page_start=None,
@@ -93,7 +97,7 @@ def get_parameters(
                     )
 
             else:
-                end_point_param_list.append(
+                end_point_list.append(
                     get_endpoint_config(
                         end_point=end_point,
                         page_start=None,
@@ -101,79 +105,10 @@ def get_parameters(
                         player_key_list=None,
                     )
                 )
-        return pipeline_params, db_params, end_point_param_list
 
-    except Exception as e:
-        raise e
+        chunked_pipelins = split_pipelines(end_point_list=end_point_list)
 
-
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
-def extract_data(
-    pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
-) -> tuple[dict, YahooParseBase]:
-    try:
-        resp, data_parser = extractor(pipeline_params, end_point_params, yahoo_api)  # type: ignore
-        return resp, data_parser
-
-    except Exception as e:
-        raise e
-
-
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
-def parse_data(data_parser: YahooParseBase, end_point_params: EndPointParameters) -> dict[str, DataFrame]:
-    try:
-        data = parse_response(data_parser, end_point_params.end_point)
-        return data
-
-    except Exception as e:
-        raise e
-
-
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
-def load_raw_data(raw_data: dict, db_params: DatabaseParameters, columns: list[str] | None) -> bool:
-    try:
-        json_to_db(raw_data, db_params, columns)
-        return True
-    except Exception as e:
-        raise e
-
-
-@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
-def load_parsed_data(resp_table_df: DataFrame, db_params: DatabaseParameters) -> bool:
-    try:
-        df_to_db(resp_table_df, db_params)
-        return True
-    except Exception as e:
-        raise e
-
-
-@flow(
-    task_runner=SequentialTaskRunner(),
-    on_failure=[notify_discord_failure],
-    on_cancellation=[notify_discord_cancellation],
-)
-def load_pipeline_list(
-    db_conn_uri: SecretStr,
-    current_timestamp: datetime,
-    game_id: int,
-    league_id: int,
-    num_of_teams: int,
-) -> tuple[
-    PipelineParameters,
-    DatabaseParameters,
-    tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
-]:
-    try:
-        pipeline_params, db_params, end_point_list = get_parameters(
-            db_conn_uri=db_conn_uri,
-            current_timestamp=current_timestamp,
-            game_id=game_id,
-            league_id=league_id,
-            num_of_teams=num_of_teams,
-        )
-        chunked_pipelines = split_pipelines(end_point_list=end_point_list)
-
-        return pipeline_params, db_params, chunked_pipelines
+        return pipeline_params, db_params, chunked_pipelins
 
     except Exception as e:
         raise e
@@ -191,19 +126,19 @@ def extract_transform_load(
     yahoo_api: YahooAPI,
 ) -> bool:
     try:
-        resp, data_parser = extract_data(pipeline_params, end_point_params, yahoo_api)
+        resp, data_parser = extractor(pipeline_params, end_point_params, yahoo_api)  # type: ignore
 
         db_params.schema_name = "yahoo_json"
         db_params.table_name = end_point_params.end_point.replace("get_", "")
-        load_raw = load_raw_data(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
+        load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
         db_params.schema_name = "yahoo_data"
         db_params.table_name = None
-        parsed_data = parse_data(data_parser=data_parser, end_point_params=end_point_params)
+        parsed_data = parse_response(data_parser, end_point_params.end_point)
 
         for table_name, table_df in parsed_data.items():
             db_params.table_name = table_name
-            load_parsed_data(
+            df_to_db(
                 resp_table_df=table_df,
                 db_params=db_params,
             )
@@ -227,7 +162,7 @@ def yahoo_flow(
             if ENV_STATUS == "local"
             else Secret.load("supabase-conn-python").get()  # type: ignore
         )
-        pipeline_params, db_params, pipeline_chunks = load_pipeline_list(
+        pipeline_params, db_params, pipeline_chunks = get_configuration_and_split_pipelines(
             db_conn_uri=db_conn_uri,
             current_timestamp=current_timestamp,
             game_id=game_id,
@@ -288,23 +223,23 @@ if __name__ == "__main__":
     sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules(
         current_timestamp=current_timestamp
     )
-    sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
-    weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
+    # sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
+    # weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
     off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
-    sunday_flow = yahoo_flow.to_deployment(  # type: ignore
-        name="sunday-yahoo-flow",
-        description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
-        schedule=sunday_schedule,
-        parameters={"current_timestamp": current_timestamp},
-        tags=["yahoo", "sunday", "live"],
-    )
-    weekly_flow = yahoo_flow.to_deployment(  # type: ignore
-        name="weekly-yahoo-flow",
-        description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
-        schedule=weekly_schedule,
-        parameters={"current_timestamp": current_timestamp},
-        tags=["yahoo", "weekly"],
-    )
+    # sunday_flow = yahoo_flow.to_deployment(  # type: ignore
+    #     name="sunday-yahoo-flow",
+    #     description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
+    #     schedule=sunday_schedule,
+    #     parameters={"current_timestamp": current_timestamp},
+    #     tags=["yahoo", "sunday", "live"],
+    # )
+    # weekly_flow = yahoo_flow.to_deployment(  # type: ignore
+    #     name="weekly-yahoo-flow",
+    #     description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
+    #     schedule=weekly_schedule,
+    #     parameters={"current_timestamp": current_timestamp},
+    #     tags=["yahoo", "weekly"],
+    # )
     off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
@@ -312,4 +247,8 @@ if __name__ == "__main__":
         parameters={"current_timestamp": current_timestamp},
         tags=["yahoo", "preseason", "offseason"],
     )
-    serve(sunday_flow, weekly_flow, off_pre_flow)  # type: ignore
+    serve(
+        # sunday_flow,  # type: ignore
+        # weekly_flow,  # type: ignore
+        off_pre_flow,  # type: ignore
+    )
