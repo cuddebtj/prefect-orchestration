@@ -1,13 +1,12 @@
 import io
 import json
-import logging
 import math
 import os
 from datetime import datetime
 
 import psycopg
 from polars import DataFrame
-from prefect import task
+from prefect import get_run_logger, task
 from prefect.blocks.system import Secret
 from psycopg import sql
 from pydantic import SecretStr
@@ -35,7 +34,7 @@ from prefect_orchestration.modules.utils import (
     get_week,
 )
 
-logger = logging.getLogger(__name__)  # type: ignore
+logger = get_run_logger()  # type: ignore
 
 
 @task

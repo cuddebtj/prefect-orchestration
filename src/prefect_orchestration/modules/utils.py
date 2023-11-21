@@ -1,5 +1,4 @@
 import calendar
-import logging
 from collections import deque, namedtuple
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -13,8 +12,6 @@ from psycopg import sql
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_parser import YahooParseBase
-
-logger = logging.getLogger(__name__)  # type: ignore
 
 NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 

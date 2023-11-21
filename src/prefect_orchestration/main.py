@@ -1,8 +1,7 @@
-import logging
 import os
 from datetime import datetime
 
-from prefect import flow, serve
+from prefect import flow, get_run_logger, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
 from prefect.task_runners import SequentialTaskRunner
@@ -38,7 +37,7 @@ from prefect_orchestration.modules.utils import (
 
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
 
-logger = logging.getLogger(__name__)  # type: ignore
+logger = get_run_logger()  # type: ignore
 
 
 @flow(
@@ -65,13 +64,17 @@ def get_configuration_and_split_pipelines(
             game_id=game_id,
             league_key=f"{game_id!s}.l.{league_id!s}",
         )
+        logger.info("Pipeline Parameters set.")
         set_end_points = determine_end_points(pipeline_params)
 
+        logger.info("Determine list of endpoints:\n{}.".format("\n\t".join(set_end_points)))
         db_params = DatabaseParameters(db_conn_uri=db_conn_uri, schema_name=None, table_name=None)
 
+        logger.info("Database parameters set.")
         end_point_list = []
         for end_point in set_end_points:
             if end_point == "get_player":
+                logger.info("Get list of players.")
                 for page_start in range(start_count, 2000, retrieval_limit):
                     end_point_list.append(
                         get_endpoint_config(
@@ -83,6 +86,7 @@ def get_configuration_and_split_pipelines(
                     )
 
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
+                logger.info("Get player info after having player list live data end points.")
                 player_key_list = get_player_key_list(db_params.db_conn_uri, pipeline_params.league_key)
                 player_chunks = chunk_list_twenty_five(player_key_list)
                 for chunked_player_list in player_chunks:
@@ -96,6 +100,7 @@ def get_configuration_and_split_pipelines(
                     )
 
             else:
+                logger.info("Non player info end points.")
                 end_point_list.append(
                     get_endpoint_config(
                         end_point=end_point,
@@ -105,9 +110,12 @@ def get_configuration_and_split_pipelines(
                     )
                 )
 
-        chunked_pipelins = split_pipelines(end_point_list=end_point_list)
+        chunked_pipelines = split_pipelines(end_point_list=end_point_list)
+        join_list = [str(len(x)) for x in chunked_pipelines]  # type: ignore
+        logger_message = "\n\t".join(join_list)
+        logger.info(f"Pipelines split into chunks:{logger_message}")
 
-        return pipeline_params, db_params, chunked_pipelins
+        return pipeline_params, db_params, chunked_pipelines
 
     except Exception as e:
         raise e
@@ -126,16 +134,20 @@ def extract_transform_load(
 ) -> bool:
     for end_point_param in end_point_params:
         try:
+            logger.info("Extracting data from Yahoo API.")
             resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
 
             db_params.schema_name = "yahoo_json"
             db_params.table_name = end_point_param.end_point.replace("get_", "")
+            logger.info("Writing raw data to database.")
             load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
             db_params.schema_name = "yahoo_data"
             db_params.table_name = None
+            logger.info("Parsing raw data to tables.")
             parsed_data = parse_response(data_parser, end_point_param.end_point)
 
+            logger.info("Writing tables to database.")
             for table_name, table_df in parsed_data.items():
                 db_params.table_name = table_name
                 df_to_db(resp_table_df=table_df, db_params=db_params)
@@ -166,18 +178,22 @@ def yahoo_flow(
             league_id=league_id,
             num_of_teams=num_of_teams,
         )
+        logger.info("Successfully retirved pipeline configurations.")
 
         pipelines = []
         if pipeline_chunks[1] and pipeline_chunks[2]:
+            logger.info("More than 25 end points to query.")
             yahoo_config_list = get_yahoo_api_config(3)
 
             get_file_from_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
             get_file_from_bucket(yahoo_config_list[1].token_file_path)  # type: ignore
             get_file_from_bucket(yahoo_config_list[2].token_file_path)  # type: ignore
+            logger.info("Retrived token files from google.")
 
             yahoo_api_one = YahooAPI(config=yahoo_config_list[0])  # type: ignore
             yahoo_api_two = YahooAPI(config=yahoo_config_list[1])  # type: ignore
             yahoo_api_three = YahooAPI(config=yahoo_config_list[2])  # type: ignore
+            logger.info("YahooAPI objects created.")
 
             for chunk_one, chunk_two, chunk_three in zip(
                 pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
@@ -191,20 +207,27 @@ def yahoo_flow(
                 pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)  # type: ignore
                 pipelines.append(pipe_three)
 
+            logger.info("Successfull ETL on yahoo data.")
             upload_file_to_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
             upload_file_to_bucket(yahoo_config_list[1].token_file_path)  # type: ignore
             upload_file_to_bucket(yahoo_config_list[2].token_file_path)  # type: ignore
+            logger.info("Updated token files to google.")
 
         else:
+            logger.info("Less than 25 end points to query.")
             yahoo_config_list = get_yahoo_api_config(1)
             get_file_from_bucket(yahoo_config_list.token_file_path)  # type: ignore
+            logger.info("Retrived token files from google.")
             yahoo_api_one = YahooAPI(config=yahoo_config_list)  # type: ignore
+            logger.info("YahooAPI objects created.")
 
             for chunk_one in pipeline_chunks[0]:
                 pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                 pipelines.append(pipe_one)
 
+            logger.info("Successfull ETL on yahoo data.")
             upload_file_to_bucket(yahoo_config_list.token_file_path)  # type: ignore
+            logger.info("Updated token files to google.")
 
         return True
 
