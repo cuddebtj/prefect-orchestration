@@ -128,12 +128,28 @@ def split_pipelines(
         chunk_two = end_point_list[chunk_size : chunk_size * 2]
         chunk_three = end_point_list[chunk_size * 2 :]
 
+        if (chunk_size * 3) > pipeline_length:
+            chunk_one = (
+                chunk_one
+                if len(chunk_one) == chunk_size
+                else chunk_one.extend([None for _ in range(chunk_size - len(chunk_one))])  # type: ignore
+            )
+            chunk_two = (
+                chunk_two
+                if len(chunk_two) == chunk_size
+                else chunk_two.extend([None for _ in range(chunk_size - len(chunk_two))])  # type: ignore
+            )
+            chunk_three = (
+                chunk_three
+                if len(chunk_three) == chunk_size
+                else chunk_three.extend([None for _ in range(chunk_size - len(chunk_three))])  # type: ignore
+            )
     else:
         chunk_one = end_point_list
         chunk_two = None
         chunk_three = None
 
-    return chunk_one, chunk_two, chunk_three
+    return chunk_one, chunk_two, chunk_three  # type: ignore
 
 
 @task
