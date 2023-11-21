@@ -89,7 +89,7 @@ def get_configuration_and_split_pipelines(
                 player_key_list = get_player_key_list(db_params.db_conn_uri, pipeline_params.league_key)
                 player_chunks = chunk_list_twenty_five(player_key_list)
                 for chunked_player_list in player_chunks:
-                    player_keys = [x[0] if isinstance(x, list) else x for x in chunked_player_list]
+                    player_keys = [x[0] if isinstance(x, tuple) else x for x in chunked_player_list]
                     logger.info(f"Player Keys:\n{player_keys}\n")
                     end_point_list.append(
                         get_endpoint_config.submit(
