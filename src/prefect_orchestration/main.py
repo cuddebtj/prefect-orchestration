@@ -199,14 +199,17 @@ def yahoo_flow(
                 for chunk_one, chunk_two, chunk_three in zip(
                     pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
                 ):
-                    pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
-                    pipelines.append(pipe_one)
+                    if chunk_one:
+                        pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
+                        pipelines.append(pipe_one)
 
-                    pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
-                    pipelines.append(pipe_two)
+                    if chunk_two:
+                        pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
+                        pipelines.append(pipe_two)
 
-                    pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
-                    pipelines.append(pipe_three)
+                    if chunk_three:
+                        pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
+                        pipelines.append(pipe_three)
 
                 logger.info("Successfull ETL on yahoo data.")
             finally:
