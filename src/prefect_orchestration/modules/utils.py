@@ -1,4 +1,5 @@
 import calendar
+import logging
 from collections import deque, namedtuple
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
@@ -14,6 +15,8 @@ from pytz import timezone
 from yahoo_parser import YahooParseBase
 
 NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
+
+logger = logging.get_logger(__name__)
 
 
 @dataclass
