@@ -65,7 +65,7 @@ def get_configuration_and_split_pipelines(
         logger.info("Pipeline Parameters set.")
         set_end_points = determine_end_points(pipeline_params)
 
-        logger.info("Determine list of endpoints:\n\t{}.".format("\n\t".join(set_end_points)))
+        logger.info("Determine list of endpoints:\n\t{}".format("\n\t".join(set_end_points)))
         db_params = DatabaseParameters(db_conn_uri=db_conn_uri, schema_name=None, table_name=None)
 
         logger.info("Database parameters set.")
