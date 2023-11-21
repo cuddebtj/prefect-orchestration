@@ -76,7 +76,7 @@ def get_configuration_and_split_pipelines(
                 logger.info("Get list of players.")
                 for page_start in range(start_count, 2000, retrieval_limit):
                     end_point_list.append(
-                        get_endpoint_config(
+                        get_endpoint_config.submit(
                             end_point=end_point,
                             page_start=page_start,
                             retrieval_limit=retrieval_limit,
@@ -90,7 +90,7 @@ def get_configuration_and_split_pipelines(
                 player_chunks = chunk_list_twenty_five(player_key_list)
                 for chunked_player_list in player_chunks:
                     end_point_list.append(
-                        get_endpoint_config(
+                        get_endpoint_config.submit(
                             end_point=end_point,
                             page_start=None,
                             retrieval_limit=None,
@@ -101,7 +101,7 @@ def get_configuration_and_split_pipelines(
             else:
                 logger.info("Non player info end points.")
                 end_point_list.append(
-                    get_endpoint_config(
+                    get_endpoint_config.submit(
                         end_point=end_point,
                         page_start=None,
                         retrieval_limit=None,
