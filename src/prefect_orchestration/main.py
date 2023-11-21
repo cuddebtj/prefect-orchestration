@@ -94,7 +94,10 @@ def get_configuration_and_split_pipelines(
                             end_point=end_point,
                             page_start=None,
                             retrieval_limit=None,
-                            player_key_list=chunked_player_list,
+                            player_key_list=[
+                                player_key[0] if isinstance(player_key, list) else player_key
+                                for player_key in chunked_player_list
+                            ],
                             wait_for=[player_chunks, player_key_list],
                         )  # type: ignore
                     )
