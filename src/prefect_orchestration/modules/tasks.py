@@ -34,8 +34,6 @@ from prefect_orchestration.modules.utils import (
     get_week,
 )
 
-logger = get_run_logger()  # type: ignore
-
 
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
@@ -302,6 +300,7 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
     """
     Copy data into postgres
     """
+    logger = get_run_logger()  # type: ignore
     # schema_name = database_parameters.schema_name
     schema_name = "yahoo_json"
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
@@ -340,6 +339,7 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
 
 @task
 def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
+    logger = get_run_logger()  # type: ignore
     schema_name = "yahoo_data"
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
 

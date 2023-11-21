@@ -37,8 +37,6 @@ from prefect_orchestration.modules.utils import (
 
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
 
-logger = get_run_logger()  # type: ignore
-
 
 @flow(
     on_failure=[notify_discord_failure],
@@ -57,6 +55,7 @@ def get_configuration_and_split_pipelines(
     DatabaseParameters,
     tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
 ]:
+    logger = get_run_logger()  # type: ignore
     try:
         pipeline_params = PipelineParameters(
             current_timestamp=current_timestamp,
@@ -132,6 +131,7 @@ def extract_transform_load(
     end_point_params: list[EndPointParameters],
     yahoo_api: YahooAPI,
 ) -> bool:
+    logger = get_run_logger()  # type: ignore
     for end_point_param in end_point_params:
         try:
             logger.info("Extracting data from Yahoo API.")
@@ -165,6 +165,7 @@ def yahoo_flow(
     league_id: int = 127732,
     num_of_teams: int = 10,
 ) -> bool:
+    logger = get_run_logger()  # type: ignore
     try:
         db_conn_uri = SecretStr(
             os.getenv("SUPABASE_CONN_PYTHON", "localhost")
