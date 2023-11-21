@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)  # type: ignore
 
 
 @flow(
-    task_runner=SequentialTaskRunner(),
     on_failure=[notify_discord_failure],
     on_cancellation=[notify_discord_cancellation],
 )
@@ -221,23 +220,23 @@ if __name__ == "__main__":
     sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules(
         current_timestamp=current_timestamp
     )
-    # sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
-    # weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
+    sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
+    weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
     off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
-    # sunday_flow = yahoo_flow.to_deployment(  # type: ignore
-    #     name="sunday-yahoo-flow",
-    #     description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
-    #     schedule=sunday_schedule,
-    #     parameters={"current_timestamp": current_timestamp},
-    #     tags=["yahoo", "sunday", "live"],
-    # )
-    # weekly_flow = yahoo_flow.to_deployment(  # type: ignore
-    #     name="weekly-yahoo-flow",
-    #     description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
-    #     schedule=weekly_schedule,
-    #     parameters={"current_timestamp": current_timestamp},
-    #     tags=["yahoo", "weekly"],
-    # )
+    sunday_flow = yahoo_flow.to_deployment(  # type: ignore
+        name="sunday-yahoo-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
+        schedule=sunday_schedule,
+        parameters={"current_timestamp": current_timestamp},
+        tags=["yahoo", "sunday", "live"],
+    )
+    weekly_flow = yahoo_flow.to_deployment(  # type: ignore
+        name="weekly-yahoo-flow",
+        description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
+        schedule=weekly_schedule,
+        parameters={"current_timestamp": current_timestamp},
+        tags=["yahoo", "weekly"],
+    )
     off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
