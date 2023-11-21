@@ -194,6 +194,9 @@ def yahoo_flow(
             yahoo_api_two = YahooAPI(config=yahoo_config_list[1])  # type: ignore
             yahoo_api_three = YahooAPI(config=yahoo_config_list[2])  # type: ignore
             logger.info("YahooAPI objects created.")
+            logger.info(f"Pipeline One length: {len(pipeline_chunks[0])}")
+            logger.info(f"Pipeline Two length: {len(pipeline_chunks[1])}")
+            logger.info(f"Pipeline Three length: {len(pipeline_chunks[2])}")
 
             try:
                 for chunk_one, chunk_two, chunk_three in zip(
