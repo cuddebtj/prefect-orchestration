@@ -183,6 +183,7 @@ def get_player_key_list(db_conn_uri: SecretStr, league_key: str) -> list[str]:
     sql_str = "select distinct player_key from yahoo_data.players where league_key = {league_key}"
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
     player_key_list = get_data_from_db(db_conn_uri.get_secret_value(), sql_query)
+    player_key_list = [player_key[0] if isinstance(player_key, list) else player_key for player_key in player_key_list]
     return player_key_list
 
 
