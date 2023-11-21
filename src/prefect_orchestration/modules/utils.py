@@ -683,10 +683,12 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
 
     copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in resp_table_df.columns])
-    copy_query = sql.SQL(copy_statement).format(table_name=sql.Identifier(db_params.table_name), column_names=column_names)  # type: ignore
+    copy_query = sql.SQL(copy_statement).format(
+        table_name=sql.Identifier(db_params.table_name), column_names=column_names  # type: ignore
+    )
 
-    file_buffer = io.BytesIO()  # type: ignore
-    resp_table_df.write_csv(file_buffer, include_header=True, separator=",", line_terminator="\n", quote_style="always")
+    file_buffer = io.BytesIO()
+    resp_table_df.write_csv(file_buffer, include_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
     file_buffer.seek(0)
 
     conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())

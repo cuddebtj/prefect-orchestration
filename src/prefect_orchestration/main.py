@@ -219,9 +219,9 @@ def yahoo_flow(
 ) -> bool:
     try:
         db_conn_uri = SecretStr(
-            os.getenv("SUPABASE_CONN_PYTHON_YAHOO", "localhost")
+            os.getenv("SUPABASE_CONN_PYTHON", "localhost")
             if ENV_STATUS == "local"
-            else Secret.load("supabase-conn-python-yahoo").get()  # type: ignore
+            else Secret.load("supabase-conn-python").get()  # type: ignore
         )
         pipeline_params, db_params, pipeline_chunks = load_pipeline_list(
             db_conn_uri=db_conn_uri,
@@ -246,13 +246,13 @@ def yahoo_flow(
             for chunk_one, chunk_two, chunk_three in zip(
                 pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
             ):
-                pipe_one = extract_transform_load.submit(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                 pipelines.append(pipe_one)
 
-                pipe_two = extract_transform_load.submit(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
+                pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
                 pipelines.append(pipe_two)
 
-                pipe_three = extract_transform_load.submit(pipeline_params, db_params, chunk_three, yahoo_api_three)  # type: ignore
+                pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)  # type: ignore
                 pipelines.append(pipe_three)
 
             upload_file_to_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
@@ -265,12 +265,10 @@ def yahoo_flow(
             yahoo_api_one = YahooAPI(config=yahoo_config_list)  # type: ignore
 
             for chunk_one in pipeline_chunks[0]:
-                pipe_one = extract_transform_load.submit(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                 pipelines.append(pipe_one)
 
             upload_file_to_bucket(yahoo_config_list.token_file_path)  # type: ignore
-
-        all_pipelines = [i for p in pipelines for i in p.result()]  # noqa: F841
 
         return True
 
