@@ -37,6 +37,7 @@ from prefect_orchestration.modules.utils import (
 
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
+    logger = get_run_logger()
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
@@ -72,6 +73,8 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     # following end_points are require looping over all players for full data
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
 
+    logger_endpoints = "\n\t".join(end_points)
+    logger.info(f"Returning player key's:\n\t{logger_endpoints}")
     return set(end_points)
 
 
@@ -82,6 +85,7 @@ def get_endpoint_config(
     retrieval_limit: int | None,
     player_key_list: list[str] | None,
 ) -> EndPointParameters:
+    logger = get_run_logger()
     end_point_params = EndPointParameters(
         end_point=end_point,
         data_key_list=None,
@@ -105,6 +109,7 @@ def get_endpoint_config(
                 error_msg = f"player_key_list must be provided for this end_point: {end_point}"
                 raise ValueError(error_msg)
 
+    logger.info(f"Returning end_point configuration for end_point {end_point}.")
     return end_point_params
 
 
@@ -112,10 +117,13 @@ def get_endpoint_config(
 def split_pipelines(
     end_point_list: list[EndPointParameters],
 ) -> tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None]:
+    logger = get_run_logger()
     pipeline_length = len(end_point_list)
+    logger.info(f"Pipelines to be run {pipeline_length!s}.")
 
     if pipeline_length >= 3:  # noqa: PLR2004
         chunk_size = math.ceil(pipeline_length / 3)
+        logger.info(f"Pipeline chunk sizes {chunk_size!s}.")
         chunk_one = end_point_list[:chunk_size]
         chunk_two = end_point_list[chunk_size : chunk_size * 2]
         chunk_three = end_point_list[chunk_size * 2 :]
@@ -132,6 +140,8 @@ def split_pipelines(
 def extractor(
     pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
 ) -> tuple[dict[str, str], YahooParseBase] | None:
+    logger = get_run_logger()
+    logger.info(f"Extracting {end_point_params.end_point}")
     if end_point_params.end_point == "get_all_game_keys":
         resp, _ = yahoo_api.get_all_game_keys()
         parser = GameParser(
@@ -285,13 +295,17 @@ def extractor(
 
 @task
 def parse_response(data_parser: YahooParseBase, end_point: str) -> dict[str, DataFrame]:
+    logger = get_run_logger()
     parsing_methods = get_parsing_methods(end_point, data_parser)
+    logger.info(f"Parsing method for {end_point} retrieved.")
 
     df_dict = {}
     for parse_name, parse_method in parsing_methods.items():
         mapped_table = END_POINT_TABLE_MAP[f"{end_point}_{parse_name}"]
         df_dict.update({mapped_table: parse_method()})
 
+    dict_len = len(df_dict)
+    logger.info(f"Number of tables returned: {dict_len}.")
     return df_dict
 
 
@@ -304,10 +318,12 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
     # schema_name = database_parameters.schema_name
     schema_name = "yahoo_json"
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+    logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
 
     copy_statement = "COPY {0} ({1}) FROM STDIN"
     column_names = [sql.Identifier(col) for col in columns] if columns else [sql.Identifier("yahoo_json")]
     copy_query = sql.SQL(copy_statement).format(sql.Identifier(db_params.table_name), *column_names)  # type: ignore
+    logger.info(f"SQL Copy Statement:\n\t{copy_query}")
 
     file_buffer = io.StringIO()  # type: ignore
     json.dump(raw_data, file_buffer)  # type: ignore
@@ -342,12 +358,14 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     logger = get_run_logger()  # type: ignore
     schema_name = "yahoo_data"
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+    logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
 
     copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in resp_table_df.columns])
     copy_query = sql.SQL(copy_statement).format(
         table_name=sql.Identifier(db_params.table_name), column_names=column_names  # type: ignore
     )
+    logger.info(f"SQL Copy Statement:\n\t{copy_query}")
 
     file_buffer = io.BytesIO()
     resp_table_df.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")
@@ -379,6 +397,7 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
 
 @task
 def get_yahoo_api_config(how_many_conig: int) -> Config | list[Config]:
+    logger = get_run_logger()  # type: ignore
     env_status = None  # os.getenv("ENVIRONMENT", "local")
 
     if how_many_conig == 1:
@@ -425,5 +444,5 @@ def get_yahoo_api_config(how_many_conig: int) -> Config | list[Config]:
                 token_file_path=tokey_file_path,
             )
             config_return.append(_config)
-
+    logger.info("Retrieved yahoo api configurations.")
     return config_return

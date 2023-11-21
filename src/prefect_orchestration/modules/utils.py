@@ -122,8 +122,10 @@ def get_labor_day(current_timestamp: date) -> date:
     mycal = calendar.Calendar(0)
     cal = mycal.monthdatescalendar(year, september)
     if cal[0][0].month == september:
+        logger.info(f"Labor Day is {cal[0][0]}")
         return cal[0][0]
     else:
+        logger.info(f"Labor Day is {cal[0][0]}")
         return cal[1][0]
 
 
@@ -144,11 +146,16 @@ def get_week(
         nfl_season.append(nfl_week)
 
         if current_date >= current_week_wednesday and current_date < next_week_tuesday and get_all_weeks is False:
-            return NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+            nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+            logger.info(f"NFL Week {nfl_week}")
+            return nfl_week
 
     if get_all_weeks is True:
+        logger.info("NFL Season returned.")
         return nfl_season
     else:
+        nfl_week = NFLWeek(week=0, week_start=current_date, week_end=current_date)
+        logger.info(f"NFL Week {nfl_week}")
         return NFLWeek(week=0, week_start=current_date, week_end=current_date)
 
 
@@ -163,7 +170,7 @@ def get_data_from_db(connection_str: str, sql_query: sql.Composed) -> list[Any]:
         curs = conn.cursor()
         curs.execute(sql_query)  # type: ignore
         query_results = curs.fetchall()
-        logger.info("SQL query executed successfully.")
+        logger.info(f"SQL query executed successfully:\n\t{sql_query}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
         logger.exception(f"Error with database:\n\n{error}\n\n")
@@ -181,9 +188,11 @@ def get_data_from_db(connection_str: str, sql_query: sql.Composed) -> list[Any]:
 @lru_cache
 def get_player_key_list(db_conn_uri: SecretStr, league_key: str) -> list[str]:
     sql_str = "select distinct player_key from yahoo_data.players where league_key = {league_key}"
+    logger.info("Getting player key list from database.")
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
     player_key_list = get_data_from_db(db_conn_uri.get_secret_value(), sql_query)
     player_key_list = [player_key[0] if isinstance(player_key, list) else player_key for player_key in player_key_list]
+    logger.info(f"Returning player key's {len(player_key_list)}.")
     return player_key_list
 
 
