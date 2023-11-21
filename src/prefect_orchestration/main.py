@@ -122,31 +122,29 @@ def get_configuration_and_split_pipelines(
 def extract_transform_load(
     pipeline_params: PipelineParameters,
     db_params: DatabaseParameters,
-    end_point_params: EndPointParameters,
+    end_point_params: list[EndPointParameters],
     yahoo_api: YahooAPI,
 ) -> bool:
-    try:
-        resp, data_parser = extractor(pipeline_params, end_point_params, yahoo_api)  # type: ignore
+    for end_point_param in end_point_params:
+        try:
+            resp, data_parser = extractor(pipeline_params, end_point_param, yahoo_api)  # type: ignore
 
-        db_params.schema_name = "yahoo_json"
-        db_params.table_name = end_point_params.end_point.replace("get_", "")
-        load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
+            db_params.schema_name = "yahoo_json"
+            db_params.table_name = end_point_param.end_point.replace("get_", "")
+            load_raw = json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])  # noqa: F841
 
-        db_params.schema_name = "yahoo_data"
-        db_params.table_name = None
-        parsed_data = parse_response(data_parser, end_point_params.end_point)
+            db_params.schema_name = "yahoo_data"
+            db_params.table_name = None
+            parsed_data = parse_response(data_parser, end_point_param.end_point)
 
-        for table_name, table_df in parsed_data.items():
-            db_params.table_name = table_name
-            df_to_db(
-                resp_table_df=table_df,
-                db_params=db_params,
-            )
+            for table_name, table_df in parsed_data.items():
+                db_params.table_name = table_name
+                df_to_db(resp_table_df=table_df, db_params=db_params)
 
-        return True
+        except Exception as e:
+            raise e
 
-    except Exception as e:
-        raise e
+    return True
 
 
 @flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
