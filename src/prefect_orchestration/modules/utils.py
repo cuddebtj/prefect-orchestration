@@ -16,7 +16,7 @@ from yahoo_parser import YahooParseBase
 
 NFLWeek = namedtuple("NFLWeek", ["week", "week_start", "week_end"])
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
