@@ -196,23 +196,25 @@ def yahoo_flow(
             yahoo_api_three = YahooAPI(config=yahoo_config_list[2])  # type: ignore
             logger.info("YahooAPI objects created.")
 
-            for chunk_one, chunk_two, chunk_three in zip(
-                pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
-            ):
-                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
-                pipelines.append(pipe_one)
+            try:
+                for chunk_one, chunk_two, chunk_three in zip(
+                    pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
+                ):
+                    pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
+                    pipelines.append(pipe_one)
 
-                pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
-                pipelines.append(pipe_two)
+                    pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
+                    pipelines.append(pipe_two)
 
-                pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
-                pipelines.append(pipe_three)
+                    pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
+                    pipelines.append(pipe_three)
 
-            logger.info("Successfull ETL on yahoo data.")
-            upload_file_to_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
-            upload_file_to_bucket(yahoo_config_list[1].token_file_path)  # type: ignore
-            upload_file_to_bucket(yahoo_config_list[2].token_file_path)  # type: ignore
-            logger.info("Updated token files to google.")
+                logger.info("Successfull ETL on yahoo data.")
+            finally:
+                upload_file_to_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
+                upload_file_to_bucket(yahoo_config_list[1].token_file_path)  # type: ignore
+                upload_file_to_bucket(yahoo_config_list[2].token_file_path)  # type: ignore
+                logger.info("Updated token files to google.")
 
         else:
             logger.info("Less than 25 end points to query.")
