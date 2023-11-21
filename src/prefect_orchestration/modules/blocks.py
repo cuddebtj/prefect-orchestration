@@ -19,7 +19,7 @@ def notify_discord_failure(flow: Flow, flow_run: FlowRun, state: State) -> None:
 - **Total run time:**
     - {total_run_time}
 - **Access URL:**
-    - https://{prefect_url}/flow-runs/flow-run/{flow_id}
+    - {prefect_url}/flow-runs/flow-run/{flow_id}
 - **State Name:**
     - {state_name}
 - **State Message:**
@@ -48,7 +48,9 @@ def notify_discord_failure(flow: Flow, flow_run: FlowRun, state: State) -> None:
             flow_tags="- ".join(f"{tag}\n" for tag in flow_run.tags) if flow_run.tags else "None",
             flow_start_time=flow_run.expected_start_time,
             total_run_time=flow_run.total_run_time,
-            prefect_url=PREFECT_API_URL.value(),
+            prefect_url=(
+                PREFECT_API_URL.value().replace("https//api.", "https://app.").replace("api/accounts", "accounts/")
+            ),
             flow_id=flow_run.id,
             state_name=state.name,
             state_type=state.type,
