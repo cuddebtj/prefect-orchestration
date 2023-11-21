@@ -84,7 +84,8 @@ def notify_discord_cancellation(flow: Flow, flow_run: FlowRun, state: State) -> 
 - **Total run time:**
     - {total_run_time}
 - **Access URL:**
-    - https://{prefect_url}/flow-run/{flow_id}
+    - https://{prefect_url}/flow-run/
+    - {flow_id}
 - **State Name:**
     - {state_name}
 - **State Data:**
