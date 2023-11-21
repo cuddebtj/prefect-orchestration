@@ -350,7 +350,7 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     )
 
     file_buffer = io.BytesIO()
-    resp_table_df.write_csv(file_buffer, include_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
+    resp_table_df.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")
     file_buffer.seek(0)
 
     conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
