@@ -122,6 +122,7 @@ def get_configuration_and_split_pipelines(
 
 @flow(
     task_runner=SequentialTaskRunner(),
+    validate_parameters=False,
     on_failure=[notify_discord_failure],
     on_cancellation=[notify_discord_cancellation],
 )
