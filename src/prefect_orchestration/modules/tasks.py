@@ -66,7 +66,7 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     if current_week > OFFSEASON_WEEK and current_week < nfl_end_week:
         # get prior week score adjustments and next week matchups
         if current_day_of_week == TUESDAY:
-            # matchups and player stats/percent owned
+            # matchups and player stats
             end_points += BEGINNING_OF_WEEK_END_POINTS
             end_points += LIVE_END_POINTS
 
