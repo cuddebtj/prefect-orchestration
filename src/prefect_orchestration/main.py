@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from itertools import zip_longest
 
 from prefect import flow, get_run_logger, serve
 from prefect.blocks.system import Secret
@@ -199,11 +200,11 @@ def yahoo_flow(
             logger.info(f"Pipeline One length: {len(pipeline_chunks[0])}")
             logger.info(f"Pipeline Two length: {len(pipeline_chunks[1])}")
             logger.info(f"Pipeline Three length: {len(pipeline_chunks[2])}")
+            zipped_chunks = zip_longest(pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2])
+            logger.info(f"Zipped chunks: \n\n{zipped_chunks}\n\n")
 
             try:
-                for chunk_one, chunk_two, chunk_three in zip(
-                    pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2], strict=True
-                ):
+                for chunk_one, chunk_two, chunk_three in zipped_chunks:
                     if chunk_one:
                         pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
                         pipelines.append(pipe_one)

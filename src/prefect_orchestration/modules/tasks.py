@@ -119,31 +119,34 @@ def split_pipelines(
 ) -> tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None]:
     logger = get_run_logger()
     pipeline_length = len(end_point_list)
-    logger.info(f"Pipelines to be run {pipeline_length!s}.")
+    logger.info(f"Number of pipelines to be run \n\n{pipeline_length!s}\n\n")
 
     if pipeline_length >= 3:  # noqa: PLR2004
         chunk_size = math.ceil(pipeline_length / 3)
-        logger.info(f"Pipeline chunk sizes {chunk_size!s}.")
+        logger.info(f"Pipeline chunk sizes \n\n{chunk_size!s} \n\n")
         chunk_one = end_point_list[:chunk_size]
+        logger.info(f"Pipelines chunk_one size \n\n{len(chunk_one)!s}\n\n")  # type: ignore
         chunk_two = end_point_list[chunk_size : chunk_size * 2]
+        logger.info(f"Pipelines chunk_two size \n\n{len(chunk_two)!s}\n\n")  # type: ignore
         chunk_three = end_point_list[chunk_size * 2 :]
+        logger.info(f"Pipelines chunk_three size \n\n{len(chunk_three)!s}\n\n")  # type: ignore
 
-        if (chunk_size * 3) > pipeline_length:
-            chunk_one = (
-                chunk_one
-                if len(chunk_one) == chunk_size
-                else chunk_one.extend([None for _ in range(chunk_size - len(chunk_one))])  # type: ignore
-            )
-            chunk_two = (
-                chunk_two
-                if len(chunk_two) == chunk_size
-                else chunk_two.extend([None for _ in range(chunk_size - len(chunk_two))])  # type: ignore
-            )
-            chunk_three = (
-                chunk_three
-                if len(chunk_three) == chunk_size
-                else chunk_three.extend([None for _ in range(chunk_size - len(chunk_three))])  # type: ignore
-            )
+        # if (chunk_size * 3) > pipeline_length:
+        #     chunk_one = (
+        #         chunk_one
+        #         if len(chunk_one) == chunk_size
+        #         else chunk_one.extend([None for _ in range(chunk_size - len(chunk_one))])  # type: ignore
+        #     )
+        #     chunk_two = (
+        #         chunk_two
+        #         if len(chunk_two) == chunk_size
+        #         else chunk_two.extend([None for _ in range(chunk_size - len(chunk_two))])  # type: ignore
+        #     )
+        #     chunk_three = (
+        #         chunk_three
+        #         if len(chunk_three) == chunk_size
+        #         else chunk_three.extend([None for _ in range(chunk_size - len(chunk_three))])  # type: ignore
+        #     )
     else:
         chunk_one = end_point_list
         chunk_two = None
