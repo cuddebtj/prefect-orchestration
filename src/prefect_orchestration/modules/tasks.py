@@ -39,7 +39,7 @@ from prefect_orchestration.modules.utils import (
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     logger = get_run_logger()
-    labor_day = get_labor_day(pipeline_params.current_timestamp)
+    labor_day = get_labor_day(pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date())
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
