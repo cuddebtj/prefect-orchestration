@@ -99,7 +99,7 @@ def define_pipeline_schedules(current_timestamp: datetime) -> tuple[str, str, st
         interval=1,
         until=datetime(current_timestamp.year, 12, 31),  # noqa: DTZ001
         bysetpos=1,
-        byweekday=MO,
+        byweekday=TU,
         bymonth=(5, 9),
     )
     return str(sunday_schedule), str(weekly_schedule), str(off_pre_schedule)
