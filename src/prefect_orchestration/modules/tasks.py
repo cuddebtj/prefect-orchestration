@@ -389,7 +389,7 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
 
     if db_params.table_name == "stat_categories":
         logger.info(f"Table columns:\n\t{table_columns}")
-        print(resp_table_df.head(5))
+        logger.info(resp_table_df.head(5))
 
     file_buffer = io.BytesIO()
     resp_table_df.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")
