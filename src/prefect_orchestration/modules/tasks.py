@@ -48,26 +48,36 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     current_day_of_week = current_date.weekday()  # type: ignore
 
     end_points = []
+
     # preseason or offseason
     if current_week == OFFSEASON_WEEK:
         # preseason
         if current_date <= nfl_start_date and current_date > labor_day:  # type: ignore
+            # draft results, team info, league info
             end_points += PRESEASON_END_POINTS
+            # week 1 matchups
+            end_points += BEGINNING_OF_WEEK_END_POINTS
+
         # offseason
         else:
             end_points += OFFSEASON_END_POINTS
+
     # regular season -> live or weekly
     if current_week > OFFSEASON_WEEK and current_week < nfl_end_week:
         # get prior week score adjustments and next week matchups
         if current_day_of_week == TUESDAY:
+            # matchups and player stats/percent owned
             end_points += BEGINNING_OF_WEEK_END_POINTS
             end_points += LIVE_END_POINTS
+
         # get player data live
         if current_day_of_week in [THURSDAY, SUNDAY, MONDAY]:
             end_points += LIVE_END_POINTS
+
         # get player pct owned and roster before Sunday
         if current_day_of_week == SATURDAY:
             end_points += BEFORE_MAIN_SLATE_WEEKLY_END_POINTS
+
     # following end_points are require looping over all players for full data
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
 
