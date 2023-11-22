@@ -377,7 +377,7 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     logger = get_run_logger()  # type: ignore
     schema_name = "yahoo_data"
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-    logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
+    logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
 
     copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in resp_table_df.columns])
