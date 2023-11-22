@@ -305,7 +305,7 @@ END_POINT_TABLE_MAP = {
     "get_game_game_df": "games",
     "get_game_game_week_df": "game_weeks",
     "get_game_game_stat_categories_df": "stat_categories",
-    "get_game_game_position_type_df": "posisition_types",
+    "get_game_game_position_type_df": "position_types",
     "get_game_game_roster_positions_df": "roster_positions",
     "get_league_preseason_league_df": "leagues",
     "get_league_preseason_team_df": "teams",
