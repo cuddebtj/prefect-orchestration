@@ -74,7 +74,7 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
 
     logger_endpoints = "\n\t".join(end_points)
-    logger.info(f"Returning player key's:\n\t{logger_endpoints}")
+    logger.info(f"Returning end point's:\n\t{logger_endpoints}")
     return set(end_points)
 
 
