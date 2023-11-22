@@ -387,9 +387,8 @@ def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
     table_columns = "\n\t".join(resp_table_df.columns)
     logger.info(f"SQL Copy Statement:\n\t{copy_query}")
 
-    if db_params.table_name == "stat_categories":
-        logger.info(f"Table columns:\n\t{table_columns}")
-        logger.info(resp_table_df.head(5))
+    logger.info(f"Table columns:\n\t{table_columns}")
+    logger.info(resp_table_df.head(2))
 
     file_buffer = io.BytesIO()
     resp_table_df.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")
