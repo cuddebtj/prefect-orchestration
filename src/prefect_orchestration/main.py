@@ -205,20 +205,18 @@ def yahoo_flow(
                     #     f"\n\tChunk one: \n\t\t{chunk_one}\n\tChunk two: \n\t\t{chunk_two}\n\tChunk three: \n\t\t{chunk_three}"
                     # )
                     if chunk_one:
-                        pipe_one = extract_transform_load.submit(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                        pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                         pipelines.append(pipe_one)
 
                     if chunk_two:
-                        pipe_two = extract_transform_load.submit(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
+                        pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
                         pipelines.append(pipe_two)
 
                     if chunk_three:
-                        pipe_three = extract_transform_load.submit(  # type: ignore
+                        pipe_three = extract_transform_load(  # type: ignore
                             pipeline_params, db_params, chunk_three, yahoo_api_three
                         )
                         pipelines.append(pipe_three)
-
-                results = [x.result() for x in pipelines]  # noqa: F841
 
                 logger.info("Successfull ETL on yahoo data.")
 
