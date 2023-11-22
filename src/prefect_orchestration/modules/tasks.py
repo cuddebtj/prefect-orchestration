@@ -119,17 +119,17 @@ def split_pipelines(
 ) -> tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None]:
     logger = get_run_logger()
     pipeline_length = len(end_point_list)
-    logger.info(f"Number of pipelines to be run \n\n{pipeline_length!s}\n\n")
+    logger.info(f"Number of pipelines to be run {pipeline_length!s}")
 
     if pipeline_length >= 3:  # noqa: PLR2004
         chunk_size = math.ceil(pipeline_length / 3)
-        logger.info(f"Pipeline chunk sizes \n\n{chunk_size!s} \n\n")
+        logger.info(f"Pipeline chunk sizes {chunk_size!s}")
         chunk_one = end_point_list[:chunk_size]
-        logger.info(f"Pipelines chunk_one size \n\n{len(chunk_one)!s}\n\n")  # type: ignore
+        logger.info(f"Pipelines chunk_one size {len(chunk_one)!s}")  # type: ignore
         chunk_two = end_point_list[chunk_size : chunk_size * 2]
-        logger.info(f"Pipelines chunk_two size \n\n{len(chunk_two)!s}\n\n")  # type: ignore
+        logger.info(f"Pipelines chunk_two size {len(chunk_two)!s}")  # type: ignore
         chunk_three = end_point_list[chunk_size * 2 :]
-        logger.info(f"Pipelines chunk_three size \n\n{len(chunk_three)!s}\n\n")  # type: ignore
+        logger.info(f"Pipelines chunk_three size {len(chunk_three)!s}")  # type: ignore
 
         # if (chunk_size * 3) > pipeline_length:
         #     chunk_one = (

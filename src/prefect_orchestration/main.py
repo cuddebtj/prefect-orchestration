@@ -197,27 +197,34 @@ def yahoo_flow(
             yahoo_api_two = YahooAPI(config=yahoo_config_list[1])  # type: ignore
             yahoo_api_three = YahooAPI(config=yahoo_config_list[2])  # type: ignore
             logger.info("YahooAPI objects created.")
-            logger.info(f"Pipeline One length: {len(pipeline_chunks[0])}")
-            logger.info(f"Pipeline Two length: {len(pipeline_chunks[1])}")
-            logger.info(f"Pipeline Three length: {len(pipeline_chunks[2])}")
             zipped_chunks = zip_longest(pipeline_chunks[0], pipeline_chunks[1], pipeline_chunks[2])
-            logger.info(f"Zipped chunks: \n\n{zipped_chunks}\n\n")
 
             try:
                 for chunk_one, chunk_two, chunk_three in zipped_chunks:
+                    # logger.info(
+                    #     f"\n\tChunk one: \n\t\t{chunk_one}\n\tChunk two: \n\t\t{chunk_two}\n\tChunk three: \n\t\t{chunk_three}"
+                    # )
                     if chunk_one:
-                        pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)
+                        pipe_one = extract_transform_load.submit(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                         pipelines.append(pipe_one)
 
                     if chunk_two:
-                        pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)
+                        pipe_two = extract_transform_load.submit(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
                         pipelines.append(pipe_two)
 
                     if chunk_three:
-                        pipe_three = extract_transform_load(pipeline_params, db_params, chunk_three, yahoo_api_three)
+                        pipe_three = extract_transform_load.submit(  # type: ignore
+                            pipeline_params, db_params, chunk_three, yahoo_api_three
+                        )
                         pipelines.append(pipe_three)
 
+                results = [x.result() for x in pipelines]  # noqa: F841
+
                 logger.info("Successfull ETL on yahoo data.")
+
+            except Exception as e:
+                logger.error(e, exc_info=True, stack_info=True)
+
             finally:
                 upload_file_to_bucket(yahoo_config_list[0].token_file_path)  # type: ignore
                 upload_file_to_bucket(yahoo_config_list[1].token_file_path)  # type: ignore
