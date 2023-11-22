@@ -347,12 +347,12 @@ PRESEASON_END_POINTS = [
     "get_league_draft_result",
     "get_player",
     "get_player_draft_analysis",
-]  # between may 1st and Labor Day
+]  # between Labor Day and the first game
 OFFSEASON_END_POINTS = [
     "get_all_game_keys",
     "get_league_offseason",
     "get_player",
-]  # between march 1st and may 1st
+]  # between march 1st and Labor Day
 BEGINNING_OF_WEEK_END_POINTS = ["get_league_matchup"]  # after the monday night game or the tuesday morning after
 BEFORE_MAIN_SLATE_WEEKLY_END_POINTS = [
     "get_player_pct_owned",

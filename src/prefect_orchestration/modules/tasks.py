@@ -30,6 +30,7 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
+    get_labor_day,
     get_parsing_methods,
     get_week,
 )
@@ -38,25 +39,22 @@ from prefect_orchestration.modules.utils import (
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     logger = get_run_logger()
+    labor_day = get_labor_day()
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
     nfl_end_week = nfl_season[-1].week
     current_date = pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date()  # type: ignore
     current_day_of_week = current_date.weekday()  # type: ignore
-    may_first = datetime(current_date.year, 5, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
-    prior_nfl_end_date = (
-        datetime(current_date.year, 1, 1, tzinfo=timezone("UTC")).astimezone(timezone("America/Denver")).date()
-    )
 
     end_points = []
     # preseason or offseason
     if current_week == OFFSEASON_WEEK:
         # preseason
-        if current_date < nfl_start_date and current_date >= may_first:  # type: ignore
+        if current_date <= nfl_start_date and current_date > labor_day:  # type: ignore
             end_points += PRESEASON_END_POINTS
         # offseason
-        if current_date < may_first and current_date >= prior_nfl_end_date:  # type: ignore
+        else:
             end_points += OFFSEASON_END_POINTS
     # regular season -> live or weekly
     if current_week > OFFSEASON_WEEK and current_week < nfl_end_week:
