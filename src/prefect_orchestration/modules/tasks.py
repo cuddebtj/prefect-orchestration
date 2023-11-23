@@ -12,7 +12,13 @@ from psycopg import Connection, sql
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import Config, YahooAPI
-from yahoo_parser import GameParser, LeagueParser, PlayerParser, TeamParser, YahooParseBase
+from yahoo_parser import (
+    GameParser,
+    LeagueParser,
+    PlayerParser,
+    TeamParser,
+    YahooParseBase,
+)
 
 from prefect_orchestration.modules.utils import (
     BEFORE_MAIN_SLATE_WEEKLY_END_POINTS,
@@ -40,7 +46,9 @@ from prefect_orchestration.modules.utils import (
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     logger = get_run_logger()
-    labor_day = get_labor_day(pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date())
+    labor_day = get_labor_day(
+        pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date()
+    )
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
@@ -111,11 +119,15 @@ def get_endpoint_config(
 
         case "get_player":
             end_point_params.page_start = page_start if page_start else 0
-            end_point_params.retrieval_limit = retrieval_limit if retrieval_limit else 25
+            end_point_params.retrieval_limit = (
+                retrieval_limit if retrieval_limit else 25
+            )
 
         case "get_player_draft_analysis" | "get_player_stat" | "get_player_pct_owned":
             if not player_key_list:
-                error_msg = f"player_key_list must be provided for this end_point: {end_point}"
+                error_msg = (
+                    f"player_key_list must be provided for this end_point: {end_point}"
+                )
                 raise ValueError(error_msg)
 
     logger.info(f"Returning end_point configuration for end_point {end_point}.")
@@ -134,7 +146,10 @@ def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
     logger.info("Getting player key list from database.")
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
     player_key_list = get_data_from_db(db_conn, sql_query)
-    player_key_list = [player_key[0] if isinstance(player_key, tuple) else player_key for player_key in player_key_list]
+    player_key_list = [
+        player_key[0] if isinstance(player_key, tuple) else player_key
+        for player_key in player_key_list
+    ]
     logger.info(f"Returning player key's {len(player_key_list)}.")
     return player_key_list
 
@@ -142,7 +157,11 @@ def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
 @task
 def split_pipelines(
     end_point_list: list[EndPointParameters],
-) -> tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None]:
+) -> tuple[
+    list[EndPointParameters],
+    list[EndPointParameters] | None,
+    list[EndPointParameters] | None,
+]:
     logger = get_run_logger()
     pipeline_length = len(end_point_list)
     logger.info(f"Number of pipelines to be run {pipeline_length!s}")
@@ -183,7 +202,9 @@ def split_pipelines(
 
 @task
 def extractor(
-    pipeline_params: PipelineParameters, end_point_params: EndPointParameters, yahoo_api: YahooAPI
+    pipeline_params: PipelineParameters,
+    end_point_params: EndPointParameters,
+    yahoo_api: YahooAPI,
 ) -> tuple[dict[str, str], YahooParseBase] | None:
     logger = get_run_logger()
     logger.info(f"Extracting {end_point_params.end_point}")
@@ -219,7 +240,9 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_draft_result":
-        resp, _ = yahoo_api.get_league_draft_result(league_key=pipeline_params.league_key)
+        resp, _ = yahoo_api.get_league_draft_result(
+            league_key=pipeline_params.league_key
+        )
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -230,7 +253,9 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_matchup":
-        resp, _ = yahoo_api.get_league_matchup(league_key=pipeline_params.league_key, week=pipeline_params.current_week)
+        resp, _ = yahoo_api.get_league_matchup(
+            league_key=pipeline_params.league_key, week=pipeline_params.current_week
+        )
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -241,7 +266,9 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_transaction":
-        resp, _ = yahoo_api.get_league_transaction(league_key=pipeline_params.league_key)
+        resp, _ = yahoo_api.get_league_transaction(
+            league_key=pipeline_params.league_key
+        )
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -263,7 +290,10 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_roster":
-        resp, _ = yahoo_api.get_roster(team_key_list=pipeline_params.team_key_list, week=pipeline_params.current_week)
+        resp, _ = yahoo_api.get_roster(
+            team_key_list=pipeline_params.team_key_list,
+            week=pipeline_params.current_week,
+        )
         parser = TeamParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -378,14 +408,18 @@ def data_to_db(
     elif json_or_df == "df":
         schema_name = "yahoo_data"
         columns = resp_data.columns  # type: ignore
-        logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
+        logger.info(
+            f"Dataframe CSV load to table {schema_name}.{db_params.table_name}."
+        )
         copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
 
         file_buffer = io.BytesIO()
         resp_data.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
         file_buffer.seek(0)
 
-    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+    set_schema_statement = sql.SQL("set search_path to {};").format(
+        sql.Identifier(schema_name)
+    )
 
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in columns])
     copy_query = sql.SQL(copy_statement).format(
@@ -405,7 +439,9 @@ def data_to_db(
         logger.info(f"JSON response copied successfully.\n\t{status_msg}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
-        logger.exception(f"Error with database:\n\n{error}\n\n", exc_info=True, stack_info=True)
+        logger.exception(
+            f"Error with database:\n\n{error}\n\n", exc_info=True, stack_info=True
+        )
         db_params.db_conn.rollback()
         logger.info("Postgres transaction rolled back.")
         raise error
@@ -448,12 +484,18 @@ def get_yahoo_api_config(how_many_conig: int) -> Config | list[Config]:
         for config_num in range(1, how_many_conig + 1):
             config_num_str = num_to_words[config_num]
             consumer_key = SecretStr(
-                os.getenv(f"YAHOO_CONSUMER_KEY_{config_num_str.upper()}", f"key_{config_num_str}")
+                os.getenv(
+                    f"YAHOO_CONSUMER_KEY_{config_num_str.upper()}",
+                    f"key_{config_num_str}",
+                )
                 if env_status == "local"
                 else Secret.load(f"yahoo-consumer-key-{config_num_str}").get()  # type: ignore
             )
             consumer_secret = SecretStr(
-                os.getenv(f"YAHOO_CONSUMER_SECRET_{config_num_str.upper()}", f"secret_{config_num_str}")
+                os.getenv(
+                    f"YAHOO_CONSUMER_SECRET_{config_num_str.upper()}",
+                    f"secret_{config_num_str}",
+                )
                 if env_status == "local"
                 else Secret.load(f"yahoo-consumer-secret-{config_num_str}").get()  # type: ignore
             )
