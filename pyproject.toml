@@ -26,7 +26,6 @@ dependencies = [
   "yahoo-export",
   "yahoo-parser",
   "psycopg[binary]",
-  "adbc_driver_postgresql",
 ]
 
 [project.urls]
@@ -36,6 +35,17 @@ Source = "https://github.com/unknown/prefect-orchestration"
 
 [tool.hatch.version]
 path = "src/prefect_orchestration/__about__.py"
+
+
+[tool.hatch.envs.default]
+dependencies = [
+  "prefect",
+  "prefect-gcp",
+  "yahoo-export",
+  "yahoo-parser",
+  "psycopg[binary]",
+]
+
 
 [tool.hatch.envs.test]
 dependencies = [

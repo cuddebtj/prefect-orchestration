@@ -1,7 +1,7 @@
 import calendar
 import logging
-from collections import namedtuple
-from collections.abc import Callable
+from collections import deque, namedtuple
+from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
@@ -68,6 +68,21 @@ class EndPointParameters:
     page_start: int | None
     retrieval_limit: int | None
     player_key_list: list[str] | None
+
+
+def chunk_to_twentyfive_items(input_list: list[str]) -> Generator[list[str], None, None]:
+    deque_obj = deque(input_list)
+
+    chunks = []
+    while deque_obj:
+        chunk = []
+        for _ in range(25):
+            if deque_obj:
+                chunk.append(deque_obj.popleft())
+
+        chunks.append(chunk)
+
+        yield chunks
 
 
 def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:

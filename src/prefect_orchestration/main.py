@@ -19,7 +19,6 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
-    chunk_to_twentyfive_items,
     data_to_db,
     determine_end_points,
     extractor,
@@ -33,6 +32,7 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
+    chunk_to_twentyfive_items,
     define_pipeline_schedules,
     get_week,
 )

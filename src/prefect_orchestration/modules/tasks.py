@@ -2,7 +2,6 @@ import io
 import json
 import math
 import os
-from collections import deque
 from typing import Literal
 
 import psycopg
@@ -36,21 +35,6 @@ from prefect_orchestration.modules.utils import (
     get_parsing_methods,
     get_week,
 )
-
-
-def chunk_to_twentyfive_items(input_list: list[str]) -> list[list[str]]:
-    deque_obj = deque(input_list)
-
-    chunks = []
-    while deque_obj:
-        chunk = []
-        for _ in range(25):
-            if deque_obj:
-                chunk.append(deque_obj.popleft())
-
-        chunks.append(chunk)
-
-    return chunks
 
 
 @task
