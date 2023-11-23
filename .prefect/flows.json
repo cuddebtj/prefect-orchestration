@@ -1,0 +1,3 @@
+{
+  "yahoo-flow": "src/prefect_orchestration/main.py:yahoo_flow"
+}
