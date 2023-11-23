@@ -30,7 +30,7 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
-    chunk_list_twenty_five,
+    chunk_to_three_list,
     define_pipeline_schedules,
     get_player_key_list,
     get_week,
@@ -89,16 +89,22 @@ def get_configuration_and_split_pipelines(
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
                 logger.info("Get player info after having player list live data end points.")
                 player_key_list = get_player_key_list(db_params.db_conn, pipeline_params.league_key)
-                player_chunks = chunk_list_twenty_five(player_key_list)
+                player_key_list = [x[0] if isinstance(x, tuple) else x for x in player_key_list]
+
+                logger.info(f"Row counts returend: {len(player_key_list)}.")
+                logger_player_list = "\n\t".join([str(x) for x in player_key_list])
+                logger.info(f"Row counts returend: \n\n{logger_player_list}\n\n")
+
+                player_chunks = chunk_to_three_list(player_key_list)
+
                 for chunked_player_list in player_chunks:
-                    player_keys = [x[0] if isinstance(x, tuple) else x for x in chunked_player_list]
-                    logger.info(f"Player Keys:\n{player_keys}\n")
+                    logger.info(f"Player Keys:\n{chunked_player_list}\n")
                     end_point_list.append(
                         get_endpoint_config.submit(
                             end_point=end_point,
                             page_start=None,
                             retrieval_limit=None,
-                            player_key_list=player_keys,
+                            player_key_list=chunked_player_list,
                             wait_for=[player_chunks, player_key_list],
                         )  # type: ignore
                     )
