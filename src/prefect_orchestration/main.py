@@ -6,6 +6,7 @@ import psycopg
 from prefect import flow, get_run_logger, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
+from prefect.task_runners import SequentialTaskRunner
 from psycopg import Connection
 from pydantic import SecretStr
 from pytz import timezone
@@ -18,7 +19,7 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
-    chunk_to_twenty_items,
+    chunk_to_twentyfive_items,
     data_to_db,
     determine_end_points,
     extractor,
@@ -92,7 +93,7 @@ def get_configuration_and_split_pipelines(
 
                 logger.info(f"Row counts returend: {len(player_key_list)}.")
 
-                player_chunks = chunk_to_twenty_items(player_key_list)
+                player_chunks = chunk_to_twentyfive_items(player_key_list)
 
                 for chunked_player_list in player_chunks:
                     end_point_config = get_endpoint_config.submit(
@@ -134,6 +135,7 @@ def get_configuration_and_split_pipelines(
     validate_parameters=False,
     on_failure=[notify_discord_failure],
     on_cancellation=[notify_discord_cancellation],
+    task_runner=SequentialTaskRunner(),
 )
 def extract_transform_load(
     pipeline_params: PipelineParameters,

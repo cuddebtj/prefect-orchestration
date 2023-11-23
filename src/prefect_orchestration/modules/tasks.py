@@ -38,8 +38,7 @@ from prefect_orchestration.modules.utils import (
 )
 
 
-@task
-def chunk_to_twenty_items(input_list: list[str]) -> list[list[str]]:
+def chunk_to_twentyfive_items(input_list: list[str]) -> list[list[str]]:
     deque_obj = deque(input_list)
 
     chunks = []
