@@ -186,7 +186,12 @@ def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:
 
 @lru_cache
 def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
-    sql_str = "select distinct player_key from yahoo_data.players where league_key = {league_key}"
+    sql_str = """
+        select distinct player_key
+        from yahoo_data.players
+        where league_key = {league_key}
+          and coalesce(player_key, '') != ''
+        """
     logger.info("Getting player key list from database.")
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
     player_key_list = get_data_from_db(db_conn, sql_query)
