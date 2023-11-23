@@ -2,7 +2,7 @@ import io
 import json
 import math
 import os
-from datetime import datetime
+from typing import Literal
 
 import psycopg
 from polars import DataFrame
@@ -337,30 +337,45 @@ def parse_response(data_parser: YahooParseBase, end_point: str) -> dict[str, Dat
 
 
 @task
-def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str] | None = None) -> None:
+def data_to_db(
+    resp_data: dict | DataFrame,
+    db_params: DatabaseParameters,
+    json_or_df: Literal["json", "df"],
+) -> None:
     """
     Copy data into postgres
     """
     logger = get_run_logger()  # type: ignore
-    # schema_name = database_parameters.schema_name
-    schema_name = "yahoo_json"
-    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-    logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
 
-    copy_statement = "COPY {0} ({1}) FROM STDIN"
-    column_names = [sql.Identifier(col) for col in columns] if columns else [sql.Identifier("yahoo_json")]
+    if json_or_df == "json":
+        schema_name = "yahoo_json"
+        columns = ["yahoo_json"]
+        logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
+        copy_statement = "COPY {0} ({1}) FROM STDIN"
+
+        file_buffer = io.StringIO()  # type: ignore
+        json.dump(resp_data, file_buffer)  # type: ignore
+        file_buffer.seek(0)
+
+    elif json_or_df == "df":
+        schema_name = "yahoo_data"
+        columns = resp_data.columns  # type: ignore
+        logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
+        copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
+
+        file_buffer = io.BytesIO()
+        resp_data.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
+        file_buffer.seek(0)
+
+    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
+
+    column_names = sql.SQL(", ").join([sql.Identifier(col) for col in columns])
     copy_query = sql.SQL(copy_statement).format(sql.Identifier(db_params.table_name), *column_names)  # type: ignore
+
     logger.info(f"SQL Copy Statement:\n\t{copy_query}")
 
-    file_buffer = io.StringIO()  # type: ignore
-    json.dump(raw_data, file_buffer)  # type: ignore
-    file_buffer.seek(0)
-
-    conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
-    logger.info("Connection to postgres database successful.")
-
     try:
-        curs = conn.cursor()
+        curs = db_params.db_conn.cursor()
         curs.execute(set_schema_statement)
 
         with curs.copy(copy_query) as copy:
@@ -370,60 +385,14 @@ def json_to_db(raw_data: dict, db_params: DatabaseParameters, columns: list[str]
         logger.info(f"JSON response copied successfully.\n\t{status_msg}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
-        logger.exception(f"Error with database:\n\n{error}\n\n")
-        conn.rollback()
+        logger.exception(f"Error with database:\n\n{error}\n\n", exc_info=True, stack_info=True)
+        db_params.db_conn.rollback()
+        logger.info("Postgres transaction rolled back.")
         raise error
 
     finally:
-        conn.commit()
-        conn.close()
-        logger.info("Postgres connection closed.")
-
-
-@task
-def df_to_db(resp_table_df: DataFrame, db_params: DatabaseParameters) -> None:
-    logger = get_run_logger()  # type: ignore
-    schema_name = "yahoo_data"
-    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
-    logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
-
-    copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
-    column_names = sql.SQL(", ").join([sql.Identifier(col) for col in resp_table_df.columns])
-    copy_query = sql.SQL(copy_statement).format(
-        table_name=sql.Identifier(db_params.table_name), column_names=column_names  # type: ignore
-    )
-    table_columns = "\n\t".join(resp_table_df.columns)
-    logger.info(f"SQL Copy Statement:\n\t{copy_query}")
-
-    logger.info(f"Table columns:\n\t{table_columns}")
-    logger.info(resp_table_df.head(2))
-
-    file_buffer = io.BytesIO()
-    resp_table_df.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")
-    file_buffer.seek(0)
-
-    conn = psycopg.connect(db_params.db_conn_uri.get_secret_value())
-    logger.info("Connection to postgres database successful.")
-
-    try:
-        curs = conn.cursor()
-        curs.execute(set_schema_statement)
-
-        with curs.copy(copy_query) as copy:
-            copy.write(file_buffer.read())
-
-        status_msg = curs.statusmessage
-        logger.info(f"Parsed dataframe copied successfully.\n\t{status_msg}")
-
-    except (Exception, psycopg.DatabaseError) as error:  # type: ignore
-        logger.exception(f"Error with database:\n\n{error}\n\n")
-        conn.rollback()
-        raise error
-
-    finally:
-        conn.commit()
-        conn.close()
-        logger.info("Postgres connection closed.")
+        db_params.db_conn.commit()
+        logger.info("Postgres transaction commited.")
 
 
 @task

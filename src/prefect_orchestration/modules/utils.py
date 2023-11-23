@@ -9,8 +9,7 @@ from typing import Any
 
 import psycopg
 from dateutil.rrule import MINUTELY, MO, MONTHLY, SA, SU, TH, TU, WEEKLY, rrule
-from psycopg import sql
-from pydantic import SecretStr
+from psycopg import Connection, sql
 from pytz import timezone
 from yahoo_parser import YahooParseBase
 
@@ -21,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DatabaseParameters:
-    __slots__ = ["db_conn_uri", "schema_name", "table_name"]
-    db_conn_uri: SecretStr
+    __slots__ = ["db_conn", "schema_name", "table_name"]
+    db_conn: Connection
     schema_name: str | None
     table_name: str | None
 
@@ -159,38 +158,36 @@ def get_week(
         return NFLWeek(week=0, week_start=current_date, week_end=current_date)
 
 
-def get_data_from_db(connection_str: str, sql_query: sql.Composed) -> list[Any]:
+def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:
     """
     Copy data from postgres
     """
-    conn = psycopg.connect(connection_str)
-    logger.info("Connection to postgres database successful.")
 
     try:
-        curs = conn.cursor()
+        curs = db_conn.cursor()
         curs.execute(sql_query)  # type: ignore
         query_results = curs.fetchall()
         logger.info(f"SQL query executed successfully:\n\t{sql_query}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
         logger.exception(f"Error with database:\n\n{error}\n\n")
-        conn.rollback()
+        db_conn.rollback()
+        logger.info("Postgres transaction rolled back.")
         raise error
 
     finally:
-        conn.commit()
-        conn.close()
-        logger.info("Postgres connection closed.")
+        db_conn.commit()
+        logger.info("Postgres transaction commited.")
 
     return query_results
 
 
 @lru_cache
-def get_player_key_list(db_conn_uri: SecretStr, league_key: str) -> list[str]:
+def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
     sql_str = "select distinct player_key from yahoo_data.players where league_key = {league_key}"
     logger.info("Getting player key list from database.")
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
-    player_key_list = get_data_from_db(db_conn_uri.get_secret_value(), sql_query)
+    player_key_list = get_data_from_db(db_conn, sql_query)
     player_key_list = [player_key[0] if isinstance(player_key, list) else player_key for player_key in player_key_list]
     logger.info(f"Returning player key's {len(player_key_list)}.")
     return player_key_list

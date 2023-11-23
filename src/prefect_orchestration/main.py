@@ -2,9 +2,11 @@ import os
 from datetime import datetime
 from itertools import zip_longest
 
+import psycopg
 from prefect import flow, get_run_logger, serve
 from prefect.blocks.system import Secret
 from prefect.client.schemas.schedules import construct_schedule
+from psycopg import Connection
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import YahooAPI
@@ -16,12 +18,11 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
+    data_to_db,
     determine_end_points,
-    df_to_db,
     extractor,
     get_endpoint_config,
     get_yahoo_api_config,
-    json_to_db,
     parse_response,
     split_pipelines,
 )
@@ -43,7 +44,7 @@ ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
     on_cancellation=[notify_discord_cancellation],
 )
 def get_configuration_and_split_pipelines(
-    db_conn_uri: SecretStr,
+    db_conn: Connection,
     current_timestamp: datetime,
     game_id: int | str,
     league_id: int | str,
@@ -67,7 +68,7 @@ def get_configuration_and_split_pipelines(
         set_end_points = determine_end_points(pipeline_params)
 
         logger.info("Determine list of endpoints:\n\t{}".format("\n\t".join(set_end_points)))
-        db_params = DatabaseParameters(db_conn_uri=db_conn_uri, schema_name=None, table_name=None)
+        db_params = DatabaseParameters(db_conn=db_conn, schema_name=None, table_name=None)
 
         logger.info("Database parameters set.")
         end_point_list = []
@@ -87,7 +88,7 @@ def get_configuration_and_split_pipelines(
 
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
                 logger.info("Get player info after having player list live data end points.")
-                player_key_list = get_player_key_list(db_params.db_conn_uri, pipeline_params.league_key)
+                player_key_list = get_player_key_list(db_params.db_conn, pipeline_params.league_key)
                 player_chunks = chunk_list_twenty_five(player_key_list)
                 for chunked_player_list in player_chunks:
                     player_keys = [x[0] if isinstance(x, tuple) else x for x in chunked_player_list]
@@ -145,7 +146,7 @@ def extract_transform_load(
     db_params.schema_name = "yahoo_json"
     db_params.table_name = end_point_param.end_point.replace("get_", "")
     logger.info("Writing raw data to database.")
-    json_to_db(raw_data=resp, db_params=db_params, columns=["yahoo_json"])
+    data_to_db(resp_data=resp, db_params=db_params, json_or_df="json")
 
     db_params.schema_name = "yahoo_data"
     db_params.table_name = None
@@ -155,7 +156,7 @@ def extract_transform_load(
     logger.info("Writing tables to database.")
     for table_name, table_df in parsed_data.items():
         db_params.table_name = table_name
-        df_to_db(resp_table_df=table_df, db_params=db_params)
+        data_to_db(resp_data=table_df, db_params=db_params, json_or_df="df")
 
     return True
 
@@ -169,13 +170,26 @@ def yahoo_flow(
 ) -> bool:
     logger = get_run_logger()  # type: ignore
     try:
-        db_conn_uri = SecretStr(
+        connection_string = SecretStr(
             os.getenv("SUPABASE_CONN_PYTHON", "localhost")
             if ENV_STATUS == "local"
             else Secret.load("supabase-conn-python").get()  # type: ignore
         )
+        db_conn = psycopg.connect(connection_string.get_secret_value())
+
+    except psycopg.DatabaseError as connection_error:
+        logger.exception(connection_error, exc_info=True, stack_info=True)
+        raise connection_error
+
+    except Exception as error:
+        logger.exception(error, exc_info=True, stack_info=True)
+        raise error
+
+    else:
+        logger.info("Database connection established.")
+
         pipeline_params, db_params, pipeline_chunks = get_configuration_and_split_pipelines(
-            db_conn_uri=db_conn_uri,
+            db_conn=db_conn,
             current_timestamp=current_timestamp,
             game_id=game_id,
             league_id=league_id,
@@ -201,9 +215,6 @@ def yahoo_flow(
 
             try:
                 for chunk_one, chunk_two, chunk_three in zipped_chunks:
-                    # logger.info(
-                    #     f"\n\tChunk one: \n\t\t{chunk_one}\n\tChunk two: \n\t\t{chunk_two}\n\tChunk three: \n\t\t{chunk_three}"
-                    # )
                     if chunk_one:
                         pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                         pipelines.append(pipe_one)
@@ -247,8 +258,8 @@ def yahoo_flow(
 
         return True
 
-    except Exception as e:
-        raise e
+    finally:
+        db_conn.close()
 
 
 if __name__ == "__main__":
