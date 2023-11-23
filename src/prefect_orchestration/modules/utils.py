@@ -1,7 +1,7 @@
 import calendar
 import logging
-from collections import deque, namedtuple
-from collections.abc import Callable, Generator
+from collections import namedtuple
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
@@ -68,6 +68,32 @@ class EndPointParameters:
     page_start: int | None
     retrieval_limit: int | None
     player_key_list: list[str] | None
+
+
+def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:
+    """
+    Copy data from postgres
+    """
+
+    try:
+        curs = db_conn.cursor()
+        curs.execute(sql_query)  # type: ignore
+        query_results = curs.fetchall()
+        logger.info(f"SQL query executed successfully:\n\t{sql_query}")
+
+    except (Exception, psycopg.DatabaseError) as error:  # type: ignore
+        logger.exception(f"Error with database:\n\n{error}\n\n")
+        db_conn.rollback()
+        logger.info("Postgres transaction rolled back.")
+        raise error
+
+    else:
+        logger.info(f"Row counts returend: {len(query_results)}.")
+        return query_results
+
+    finally:
+        db_conn.commit()
+        logger.info("Postgres transaction commited.")
 
 
 @lru_cache
@@ -156,60 +182,6 @@ def get_week(
         nfl_week = NFLWeek(week=0, week_start=current_date, week_end=current_date)
         logger.info(f"NFL Week {nfl_week}")
         return NFLWeek(week=0, week_start=current_date, week_end=current_date)
-
-
-def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:
-    """
-    Copy data from postgres
-    """
-
-    try:
-        curs = db_conn.cursor()
-        curs.execute(sql_query)  # type: ignore
-        query_results = curs.fetchall()
-        logger.info(f"SQL query executed successfully:\n\t{sql_query}")
-
-    except (Exception, psycopg.DatabaseError) as error:  # type: ignore
-        logger.exception(f"Error with database:\n\n{error}\n\n")
-        db_conn.rollback()
-        logger.info("Postgres transaction rolled back.")
-        raise error
-
-    else:
-        logger.info(f"Row counts returend: {len(query_results)}.")
-        return query_results
-
-    finally:
-        db_conn.commit()
-        logger.info("Postgres transaction commited.")
-
-
-@lru_cache
-def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
-    sql_str = """
-        select distinct player_key
-        from yahoo_data.players
-        where league_key = {league_key}
-          and coalesce(player_key, '') != ''
-        """
-    logger.info("Getting player key list from database.")
-    sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
-    player_key_list = get_data_from_db(db_conn, sql_query)
-    player_key_list = [player_key[0] if isinstance(player_key, list) else player_key for player_key in player_key_list]
-    logger.info(f"Returning player key's {len(player_key_list)}.")
-    return player_key_list
-
-
-def chunk_to_twenty_items(input_list: list[str]) -> Generator[list[str], None, None]:
-    deque_obj = deque(input_list)
-
-    while deque_obj:
-        chunk = []
-        for _ in range(25):
-            if deque_obj:
-                chunk.append(deque_obj.popleft())
-
-        yield chunk
 
 
 @lru_cache

@@ -18,10 +18,12 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
+    chunk_to_twenty_items,
     data_to_db,
     determine_end_points,
     extractor,
     get_endpoint_config,
+    get_player_key_list,
     get_yahoo_api_config,
     parse_response,
     split_pipelines,
@@ -30,9 +32,7 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
-    chunk_to_twenty_items,
     define_pipeline_schedules,
-    get_player_key_list,
     get_week,
 )
 
@@ -76,51 +76,49 @@ def get_configuration_and_split_pipelines(
             if end_point == "get_player":
                 logger.info("Get list of players.")
                 for page_start in range(start_count, 2000, retrieval_limit):
-                    end_point_list.append(
-                        get_endpoint_config.submit(
-                            end_point=end_point,
-                            page_start=page_start,
-                            retrieval_limit=retrieval_limit,
-                            player_key_list=None,
-                            wait_for=[set_end_points],
-                        )  # type: ignore
-                    )
+                    end_point_config = get_endpoint_config.submit(
+                        end_point=end_point,
+                        page_start=page_start,
+                        retrieval_limit=retrieval_limit,
+                        player_key_list=None,
+                        wait_for=[set_end_points],
+                    )  # type: ignore
+                    end_point_list.append(end_point_config)
+                    logger.info(f"end_point_confg: {end_point_config}")
 
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
                 logger.info("Get player info after having player list live data end points.")
                 player_key_list = get_player_key_list(db_params.db_conn, pipeline_params.league_key)
-                player_key_list = [x[0] if isinstance(x, tuple) else x for x in player_key_list]
 
                 logger.info(f"Row counts returend: {len(player_key_list)}.")
 
                 player_chunks = chunk_to_twenty_items(player_key_list)
 
                 for chunked_player_list in player_chunks:
-                    logger.info(f"Player Keys:\n{chunked_player_list}\n")
-                    end_point_list.append(
-                        get_endpoint_config.submit(
-                            end_point=end_point,
-                            page_start=None,
-                            retrieval_limit=None,
-                            player_key_list=chunked_player_list,
-                            wait_for=[player_chunks, player_key_list],
-                        )  # type: ignore
-                    )
-                    logger.info(f"end_point_list:\n{end_point_list}\n")
-
-            else:
-                logger.info("Non player info end points.")
-                end_point_list.append(
-                    get_endpoint_config.submit(
+                    end_point_config = get_endpoint_config.submit(
                         end_point=end_point,
                         page_start=None,
                         retrieval_limit=None,
-                        player_key_list=None,
-                        wait_for=[set_end_points],
+                        player_key_list=chunked_player_list,
+                        wait_for=[player_chunks],
                     )  # type: ignore
-                )
+                    end_point_list.append(end_point_config)
+                    logger.info(f"end_point_confg: {end_point_config}")
+
+            else:
+                logger.info("Non player info end points.")
+                end_point_config = get_endpoint_config.submit(
+                    end_point=end_point,
+                    page_start=None,
+                    retrieval_limit=None,
+                    player_key_list=None,
+                    wait_for=[set_end_points],
+                )  # type: ignore
+                end_point_list.append(end_point_config)
+                logger.info(f"end_point_confg: {end_point_config}")
 
         end_point_list = [x.result() for x in end_point_list]
+        logger.info(f"end_point_confg: {end_point_list}")
         chunked_pipelines = split_pipelines(end_point_list=end_point_list)
         join_list = [str(len(x)) if x else "None" for x in chunked_pipelines]  # type: ignore
         logger_message = "\n\t".join(join_list)

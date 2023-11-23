@@ -2,13 +2,14 @@ import io
 import json
 import math
 import os
+from collections import deque
 from typing import Literal
 
 import psycopg
 from polars import DataFrame
 from prefect import get_run_logger, task
 from prefect.blocks.system import Secret
-from psycopg import sql
+from psycopg import Connection, sql
 from pydantic import SecretStr
 from pytz import timezone
 from yahoo_export import Config, YahooAPI
@@ -30,10 +31,27 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
+    get_data_from_db,
     get_labor_day,
     get_parsing_methods,
     get_week,
 )
+
+
+@task
+def chunk_to_twenty_items(input_list: list[str]) -> list[list[str]]:
+    deque_obj = deque(input_list)
+
+    chunks = []
+    while deque_obj:
+        chunk = []
+        for _ in range(25):
+            if deque_obj:
+                chunk.append(deque_obj.popleft())
+
+        chunks.append(chunk)
+
+    return chunks
 
 
 @task
@@ -119,6 +137,23 @@ def get_endpoint_config(
 
     logger.info(f"Returning end_point configuration for end_point {end_point}.")
     return end_point_params
+
+
+@task
+def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
+    logger = get_run_logger()
+    sql_str = """
+        select distinct player_key
+        from yahoo_data.players
+        where league_key = {league_key}
+          and coalesce(player_key, '') != ''
+        """
+    logger.info("Getting player key list from database.")
+    sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
+    player_key_list = get_data_from_db(db_conn, sql_query)
+    player_key_list = [player_key[0] if isinstance(player_key, tuple) else player_key for player_key in player_key_list]
+    logger.info(f"Returning player key's {len(player_key_list)}.")
+    return player_key_list
 
 
 @task
