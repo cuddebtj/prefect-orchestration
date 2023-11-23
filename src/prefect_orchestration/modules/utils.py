@@ -175,11 +175,13 @@ def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:
         logger.info("Postgres transaction rolled back.")
         raise error
 
+    else:
+        logger.info(f"Row counts returend: {len(query_results)}.")
+        return query_results
+
     finally:
         db_conn.commit()
         logger.info("Postgres transaction commited.")
-
-    return query_results
 
 
 @lru_cache
