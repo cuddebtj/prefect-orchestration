@@ -351,7 +351,7 @@ def data_to_db(
         schema_name = "yahoo_json"
         columns = ["yahoo_json"]
         logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
-        copy_statement = "COPY {0} ({1}) FROM STDIN"
+        copy_statement = "COPY {table_name} ({column_names}) FROM STDIN"
 
         file_buffer = io.StringIO()  # type: ignore
         json.dump(resp_data, file_buffer)  # type: ignore
@@ -370,7 +370,9 @@ def data_to_db(
     set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
 
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in columns])
-    copy_query = sql.SQL(copy_statement).format(sql.Identifier(db_params.table_name), *column_names)  # type: ignore
+    copy_query = sql.SQL(copy_statement).format(
+        table_name=sql.Identifier(db_params.table_name), column_names=column_names  # type: ignore
+    )
 
     logger.info(f"SQL Copy Statement:\n\t{copy_query}")
 
