@@ -68,7 +68,7 @@ def get_configuration_and_split_pipelines(
         logger.info("Pipeline Parameters set.")
         set_end_points = determine_end_points(pipeline_params)
 
-        logger.info("Determine list of endpoints:\n\t{}".format("\n\t".join(set_end_points)))
+        logger.info("Determine list of endpoints:\n\t- {}".format("\n\t- ".join(set_end_points)))
         db_params = DatabaseParameters(db_conn=db_conn, schema_name=None, table_name=None)
 
         logger.info("Database parameters set.")
@@ -85,7 +85,6 @@ def get_configuration_and_split_pipelines(
                         wait_for=[set_end_points],
                     )  # type: ignore
                     end_point_list.append(end_point_config)
-                    logger.info(f"end_point_confg: {end_point_config}")
 
             elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
                 logger.info("Get player info after having player list live data end points.")
@@ -104,7 +103,6 @@ def get_configuration_and_split_pipelines(
                         wait_for=[player_chunks],
                     )  # type: ignore
                     end_point_list.append(end_point_config)
-                    logger.info(f"end_point_confg: {end_point_config}")
 
             else:
                 logger.info("Non player info end points.")
@@ -116,14 +114,10 @@ def get_configuration_and_split_pipelines(
                     wait_for=[set_end_points],
                 )  # type: ignore
                 end_point_list.append(end_point_config)
-                logger.info(f"end_point_confg: {end_point_config}")
 
         end_point_list = [x.result() for x in end_point_list]
-        logger.info(f"end_point_confg: {end_point_list}")
         chunked_pipelines = split_pipelines(end_point_list=end_point_list)
-        join_list = [str(len(x)) if x else "None" for x in chunked_pipelines]  # type: ignore
-        logger_message = "\n\t".join(join_list)
-        logger.info(f"Pipelines split into chunks:\n\t{logger_message}")
+        logger.info("Pipelines split into chunks")
 
         return pipeline_params, db_params, chunked_pipelines
 
@@ -264,7 +258,7 @@ def yahoo_flow(
         return True
 
     finally:
-        db_conn.close()
+        db_conn.close()  # type: ignore
 
 
 if __name__ == "__main__":

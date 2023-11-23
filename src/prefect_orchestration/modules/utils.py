@@ -70,7 +70,7 @@ class EndPointParameters:
     player_key_list: list[str] | None
 
 
-def chunk_to_twentyfive_items(input_list: list[str]) -> Generator[list[str], None, None]:
+def chunk_to_twentyfive_items(input_list: list[str]) -> list[list[str]]:
     deque_obj = deque(input_list)
 
     chunks = []
@@ -82,7 +82,8 @@ def chunk_to_twentyfive_items(input_list: list[str]) -> Generator[list[str], Non
 
         chunks.append(chunk)
 
-        yield chunks
+        # yield chunk
+    return chunks
 
 
 def get_data_from_db(db_conn: Connection, sql_query: sql.Composed) -> list[Any]:

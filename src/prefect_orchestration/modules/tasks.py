@@ -90,8 +90,6 @@ def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     # following end_points are require looping over all players for full data
     # get_players, get_player_draft_analysis, get_player_stat, get_player_pct_owned
 
-    logger_endpoints = "\n\t".join(end_points)
-    logger.info(f"Returning end point's:\n\t{logger_endpoints}")
     return set(end_points)
 
 
@@ -145,11 +143,7 @@ def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
         """
     logger.info("Getting player key list from database.")
     sql_query = sql.SQL(sql_str).format(league_key=sql.Literal(league_key))
-    player_key_list = get_data_from_db(db_conn, sql_query)
-    player_key_list = [
-        player_key[0] if isinstance(player_key, tuple) else player_key
-        for player_key in player_key_list
-    ]
+    player_key_list = [player_key[0] for player_key in get_data_from_db(db_conn, sql_query)]
     logger.info(f"Returning player key's {len(player_key_list)}.")
     return player_key_list
 
@@ -436,7 +430,7 @@ def data_to_db(
             copy.write(file_buffer.read())
 
         status_msg = curs.statusmessage
-        logger.info(f"JSON response copied successfully.\n\t{status_msg}")
+        logger.info(f"Response copied successfully.\n\t{status_msg}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
         logger.exception(
