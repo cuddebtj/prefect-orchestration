@@ -30,7 +30,7 @@ from prefect_orchestration.modules.utils import (
     DatabaseParameters,
     EndPointParameters,
     PipelineParameters,
-    chunk_to_three_list,
+    chunk_to_twenty_items,
     define_pipeline_schedules,
     get_player_key_list,
     get_week,
@@ -92,10 +92,8 @@ def get_configuration_and_split_pipelines(
                 player_key_list = [x[0] if isinstance(x, tuple) else x for x in player_key_list]
 
                 logger.info(f"Row counts returend: {len(player_key_list)}.")
-                logger_player_list = "\n\t".join([str(x) for x in player_key_list])
-                logger.info(f"Row counts returend: \n\n{logger_player_list}\n\n")
 
-                player_chunks = chunk_to_three_list(player_key_list)
+                player_chunks = chunk_to_twenty_items(player_key_list)
 
                 for chunked_player_list in player_chunks:
                     logger.info(f"Player Keys:\n{chunked_player_list}\n")
@@ -108,6 +106,7 @@ def get_configuration_and_split_pipelines(
                             wait_for=[player_chunks, player_key_list],
                         )  # type: ignore
                     )
+                    logger.info(f"end_point_list:\n{end_point_list}\n")
 
             else:
                 logger.info("Non player info end points.")

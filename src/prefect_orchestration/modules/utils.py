@@ -200,7 +200,7 @@ def get_player_key_list(db_conn: Connection, league_key: str) -> list[str]:
     return player_key_list
 
 
-def chunk_to_three_list(input_list: list[str]) -> Generator[list[str], None, None]:
+def chunk_to_twenty_items(input_list: list[str]) -> Generator[list[str], None, None]:
     deque_obj = deque(input_list)
 
     while deque_obj:
