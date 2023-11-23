@@ -79,7 +79,7 @@ def define_pipeline_schedules(current_timestamp: datetime) -> tuple[str, str, st
     sunday_schedule = rrule(
         freq=MINUTELY,
         dtstart=start_date,
-        interval=5,
+        interval=10,
         until=end_date,
         byweekday=SU,
         byhour=range(6, 23),
