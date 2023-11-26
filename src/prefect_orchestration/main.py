@@ -197,8 +197,6 @@ def yahoo_flow(
             league_id=league_id,
             num_of_teams=num_of_teams,
         )
-        logger.info(f"Pipeline Parameters set.\n{asdict(pipeline_params)}")
-        logger.info(f"Database Parameters set.\n{asdict(db_params)}")
         logger.info("Successfully retirved pipeline configurations.")
 
         pipelines = []
