@@ -424,6 +424,7 @@ def data_to_db(
     set_delete_statement = sql.SQL("CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});").format(
         schema_name=sql.Literal(schema_name), table_name=sql.Literal(db_params.table_name),
     )
+    logger.info(f"SQL Delete Statement:\n\t{set_delete_statement}")
 
     set_schema_statement = sql.SQL("set search_path to {};").format(
         sql.Identifier(schema_name)
