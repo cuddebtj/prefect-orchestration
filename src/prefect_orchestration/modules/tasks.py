@@ -444,7 +444,8 @@ def data_to_db(
         with curs.copy(copy_query) as copy:
             copy.write(file_buffer.read())
 
-        curs.execute(set_delete_statement)
+        if json_or_df == "df":
+            curs.execute(set_delete_statement)
 
         status_msg = curs.statusmessage
         logger.info(f"Response copied successfully.\n\t{status_msg}")
