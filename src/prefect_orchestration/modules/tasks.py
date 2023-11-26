@@ -421,6 +421,10 @@ def data_to_db(
         resp_data.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
         file_buffer.seek(0)
 
+    set_delete_statement = sql.SQL("CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});").format(
+        schema_name=sql.Literal(schema_name), table_name=sql.Literal(db_params.table_name),
+    )
+
     set_schema_statement = sql.SQL("set search_path to {};").format(
         sql.Identifier(schema_name)
     )
@@ -438,6 +442,8 @@ def data_to_db(
 
         with curs.copy(copy_query) as copy:
             copy.write(file_buffer.read())
+
+        curs.execute(set_delete_statement)
 
         status_msg = curs.statusmessage
         logger.info(f"Response copied successfully.\n\t{status_msg}")
