@@ -164,7 +164,7 @@ def extract_transform_load(
 
 @flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def yahoo_flow(
-    run_datetime: str | None = None,
+    run_datetime: str = "",
     game_id: int = 423,
     league_id: int = 127732,
     num_of_teams: int = 10,
@@ -279,21 +279,21 @@ if __name__ == "__main__":
         name="sunday-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
         schedule=sunday_schedule,
-        parameters={"run_datetime": None},
+        parameters={"run_datetime": ""},
         tags=["yahoo", "sunday", "live"],
     )
     weekly_flow = yahoo_flow.to_deployment(  # type: ignore
         name="weekly-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
-        parameters={"run_datetime": None},
+        parameters={"run_datetime": ""},
         tags=["yahoo", "weekly"],
     )
     off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
-        parameters={"run_datetime": None},
+        parameters={"run_datetime": ""},
         tags=["yahoo", "preseason", "offseason"],
     )
     serve(

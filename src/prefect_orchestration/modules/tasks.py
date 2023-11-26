@@ -44,8 +44,8 @@ from prefect_orchestration.modules.utils import (
 )
 
 @task
-def get_run_datetime(run_datetime: str | None) -> datetime:
-    if run_datetime:
+def get_run_datetime(run_datetime: str) -> datetime:
+    if run_datetime != "":
         run_timestamp = datetime.fromisoformat(run_datetime).astimezone(timezone("UTC"))
     else:
         run_timestamp = datetime.now(tz=timezone("UTC"))
