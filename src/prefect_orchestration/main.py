@@ -20,6 +20,7 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
+    get_run_datetime,
     data_to_db,
     determine_end_points,
     extractor,
@@ -163,12 +164,13 @@ def extract_transform_load(
 
 @flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
 def yahoo_flow(
-    current_timestamp: datetime,
+    run_datetime: str | None = None,
     game_id: int = 423,
     league_id: int = 127732,
     num_of_teams: int = 10,
 ) -> bool:
     logger = get_run_logger()  # type: ignore
+    current_timestamp = get_run_datetime(run_datetime)
     try:
         connection_string = SecretStr(
             os.getenv("SUPABASE_CONN_PYTHON", "localhost")
@@ -265,12 +267,10 @@ def yahoo_flow(
 
 
 if __name__ == "__main__":
-    current_timestamp = datetime.now(tz=timezone("UTC"))
     anchor_timezone = "America/Denver"
-    nfl_season = get_week(current_timestamp, True)
 
     sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules(
-        current_timestamp=current_timestamp
+        current_timestamp=datetime.now(tz=timezone("UTC"))
     )
     sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
     weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
@@ -279,21 +279,21 @@ if __name__ == "__main__":
         name="sunday-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
         schedule=sunday_schedule,
-        parameters={"current_timestamp": current_timestamp},
+        parameters={"run_datetime": None},
         tags=["yahoo", "sunday", "live"],
     )
     weekly_flow = yahoo_flow.to_deployment(  # type: ignore
         name="weekly-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
-        parameters={"current_timestamp": current_timestamp},
+        parameters={"run_datetime": None},
         tags=["yahoo", "weekly"],
     )
     off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
-        parameters={"current_timestamp": current_timestamp},
+        parameters={"run_datetime": None},
         tags=["yahoo", "preseason", "offseason"],
     )
     serve(

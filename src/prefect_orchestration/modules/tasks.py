@@ -2,6 +2,7 @@ import io
 import json
 import math
 import os
+from datetime import datetime
 from typing import Literal
 
 import psycopg
@@ -41,6 +42,15 @@ from prefect_orchestration.modules.utils import (
     get_parsing_methods,
     get_week,
 )
+
+@task
+def get_run_datetime(run_datetime: str | None) -> datetime:
+    if run_datetime:
+        run_timestamp = datetime.fromisoformat(run_datetime).astimezone(timezone("UTC"))
+    else:
+        run_timestamp = datetime.now(tz=timezone("UTC"))
+
+    return run_timestamp
 
 
 @task
