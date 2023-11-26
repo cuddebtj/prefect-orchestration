@@ -19,14 +19,19 @@ pull:
 
 # the deployments section allows you to provide configuration for deploying flows
 deployments:
-- name: null
+- name: "yahoo-flow/off-pre-season"
   version: null
-  tags: []
-  description: null
-  schedule: {}
-  flow_name: null
-  entrypoint: null
-  parameters: {}
+  tags: ["offseason", "preason", "yahoo"]
+  description: "Export league data from Yahoo Fantasy Sports API to Supabase during the off-season."
+  schedule: {"rrule": "DTSTART:20230101T000000 RRULE:FREQ=MONTHLY;UNTIL=20231231T000000;BYSETPOS=1;BYMONTH=5,9;BYDAY=TU"}
+  flow_name: "yahoo-flow"
+  entrypoint: "src/prefect_orchestration/main.py:yahoo_flow"
+  parameters: {
+    "current_timestamp": datetime.now(tz=timezone("UTC")),
+    "game_id": 423,
+    "league_id": 127732,
+    "num_of_teams": 10,
+    }
   work_pool:
     name: null
     work_queue_name: null

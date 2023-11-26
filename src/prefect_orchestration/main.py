@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from dataclasses import asdict
 from itertools import zip_longest
 
 import psycopg
@@ -65,7 +66,7 @@ def get_configuration_and_split_pipelines(
             game_id=game_id,
             league_key=f"{game_id!s}.l.{league_id!s}",
         )
-        logger.info("Pipeline Parameters set.")
+        logger.info(f"Pipeline Parameters set.\n{asdict(pipeline_params)}")
         set_end_points = determine_end_points(pipeline_params)
 
         logger.info("Determine list of endpoints:\n\t- {}".format("\n\t- ".join(set_end_points)))
