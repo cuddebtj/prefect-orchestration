@@ -126,6 +126,3 @@ exclude = [
 # Tests can use magic values, assertions, and relative imports
 "tests/**/*" = ["PLR2004", "S101", "TID252"]
 "__init__.py" = ["E402"]
-
-[tool.ruff.pydocstyl]
-convention = "google"

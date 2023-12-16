@@ -43,8 +43,11 @@ from prefect_orchestration.modules.utils import (
     get_week,
 )
 
+
 @task
 def get_run_datetime(run_datetime: str) -> datetime:
+    logger = get_run_logger()
+    logger.info(f"Run datetime provided: {run_datetime}")
     if run_datetime != "":
         run_timestamp = datetime.fromisoformat(run_datetime).astimezone(timezone("UTC"))
     else:
@@ -127,15 +130,11 @@ def get_endpoint_config(
 
         case "get_player":
             end_point_params.page_start = page_start if page_start else 0
-            end_point_params.retrieval_limit = (
-                retrieval_limit if retrieval_limit else 25
-            )
+            end_point_params.retrieval_limit = retrieval_limit if retrieval_limit else 25
 
         case "get_player_draft_analysis" | "get_player_stat" | "get_player_pct_owned":
             if not player_key_list:
-                error_msg = (
-                    f"player_key_list must be provided for this end_point: {end_point}"
-                )
+                error_msg = f"player_key_list must be provided for this end_point: {end_point}"
                 raise ValueError(error_msg)
 
     logger.info(f"Returning end_point configuration for end_point {end_point}.")
@@ -244,9 +243,7 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_draft_result":
-        resp, _ = yahoo_api.get_league_draft_result(
-            league_key=pipeline_params.league_key
-        )
+        resp, _ = yahoo_api.get_league_draft_result(league_key=pipeline_params.league_key)
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -270,9 +267,7 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_transaction":
-        resp, _ = yahoo_api.get_league_transaction(
-            league_key=pipeline_params.league_key
-        )
+        resp, _ = yahoo_api.get_league_transaction(league_key=pipeline_params.league_key)
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -324,7 +319,8 @@ def extractor(
 
     elif end_point_params.end_point == "get_player_draft_analysis":
         resp, _ = yahoo_api.get_player_draft_analysis(
-            league_key=pipeline_params.league_key, player_key_list=end_point_params.player_key_list  # type: ignore
+            league_key=pipeline_params.league_key,
+            player_key_list=end_point_params.player_key_list,  # type: ignore
         )
         parser = PlayerParser(
             response=resp,  # type: ignore
@@ -412,27 +408,29 @@ def data_to_db(
     elif json_or_df == "df":
         schema_name = "yahoo_data"
         columns = resp_data.columns  # type: ignore
-        logger.info(
-            f"Dataframe CSV load to table {schema_name}.{db_params.table_name}."
-        )
+        logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
         copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
 
         file_buffer = io.BytesIO()
-        resp_data.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
+        resp_data.write_csv(
+            file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always"
+        )  # type: ignore
         file_buffer.seek(0)
 
-    set_delete_statement = sql.SQL("CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});").format(
-        schema_name=sql.Literal(schema_name), table_name=sql.Literal(db_params.table_name),
+    set_delete_statement = sql.SQL(
+        "CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});"
+    ).format(
+        schema_name=sql.Literal(schema_name),
+        table_name=sql.Literal(db_params.table_name),
     )
     logger.info(f"SQL Delete Statement:\n\t{set_delete_statement}")
 
-    set_schema_statement = sql.SQL("set search_path to {};").format(
-        sql.Identifier(schema_name)
-    )
+    set_schema_statement = sql.SQL("set search_path to {};").format(sql.Identifier(schema_name))
 
     column_names = sql.SQL(", ").join([sql.Identifier(col) for col in columns])
     copy_query = sql.SQL(copy_statement).format(
-        table_name=sql.Identifier(db_params.table_name), column_names=column_names  # type: ignore
+        table_name=sql.Identifier(db_params.table_name),
+        column_names=column_names,  # type: ignore
     )
 
     logger.info(f"SQL Copy Statement:\n\t{copy_query}")
@@ -451,9 +449,7 @@ def data_to_db(
         logger.info(f"Response copied successfully.\n\t{status_msg}")
 
     except (Exception, psycopg.DatabaseError) as error:  # type: ignore
-        logger.exception(
-            f"Error with database:\n\n{error}\n\n", exc_info=True, stack_info=True
-        )
+        logger.exception(f"Error with database:\n\n{error}\n\n", exc_info=True, stack_info=True)
         db_params.db_conn.rollback()
         logger.info("Postgres transaction rolled back.")
         raise error
