@@ -1,6 +1,6 @@
 import os
-from datetime import datetime
 from dataclasses import asdict
+from datetime import datetime
 from itertools import zip_longest
 
 import psycopg
@@ -20,12 +20,12 @@ from prefect_orchestration.modules.blocks import (
     upload_file_to_bucket,
 )
 from prefect_orchestration.modules.tasks import (
-    get_run_datetime,
     data_to_db,
     determine_end_points,
     extractor,
     get_endpoint_config,
     get_player_key_list,
+    get_run_datetime,
     get_yahoo_api_config,
     parse_response,
     split_pipelines,
@@ -36,7 +36,6 @@ from prefect_orchestration.modules.utils import (
     PipelineParameters,
     chunk_to_twentyfive_items,
     define_pipeline_schedules,
-    get_week,
 )
 
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
@@ -57,7 +56,9 @@ def get_configuration_and_split_pipelines(
 ) -> tuple[
     PipelineParameters,
     DatabaseParameters,
-    tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
+    tuple[
+        list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None
+    ],
 ]:
     logger = get_run_logger()  # type: ignore
     try:
@@ -88,7 +89,11 @@ def get_configuration_and_split_pipelines(
                     )  # type: ignore
                     end_point_list.append(end_point_config)
 
-            elif end_point in ["get_player_draft_analysis", "get_player_stat", "get_player_pct_owned"]:
+            elif end_point in [
+                "get_player_draft_analysis",
+                "get_player_stat",
+                "get_player_pct_owned",
+            ]:
                 logger.info("Get player info after having player list live data end points.")
                 player_key_list = get_player_key_list(db_params.db_conn, pipeline_params.league_key)
 
@@ -218,11 +223,15 @@ def yahoo_flow(
             try:
                 for chunk_one, chunk_two, chunk_three in zipped_chunks:
                     if chunk_one:
-                        pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                        pipe_one = extract_transform_load(
+                            pipeline_params, db_params, chunk_one, yahoo_api_one
+                        )  # type: ignore
                         pipelines.append(pipe_one)
 
                     if chunk_two:
-                        pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
+                        pipe_two = extract_transform_load(
+                            pipeline_params, db_params, chunk_two, yahoo_api_two
+                        )  # type: ignore
                         pipelines.append(pipe_two)
 
                     if chunk_three:
@@ -251,7 +260,9 @@ def yahoo_flow(
             logger.info("YahooAPI objects created.")
 
             for chunk_one in pipeline_chunks[0]:
-                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
+                pipe_one = extract_transform_load(
+                    pipeline_params, db_params, chunk_one, yahoo_api_one
+                )  # type: ignore
                 pipelines.append(pipe_one)
 
             logger.info("Successfull ETL on yahoo data.")
