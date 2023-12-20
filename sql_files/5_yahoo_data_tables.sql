@@ -1,3 +1,4 @@
+cdrop table yahoo_data.allgames;
 create table if not exists yahoo_data.allgames(
     code text,
     game_id text,
@@ -13,6 +14,7 @@ create table if not exists yahoo_data.allgames(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_all_game primary key(game_id, inserted_timestamp)
 );
+drop table yahoo_data.games;
 create table if not exists yahoo_data.games(
     code text,
     game_id text,
@@ -22,20 +24,22 @@ create table if not exists yahoo_data.games(
     url text,
     is_game_over text,
     is_offseason text,
-    is_regitextation_over text,
+    is_registration_over text,
     season text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_game_id primary key(game_id, inserted_timestamp)
 );
+drop table yahoo_data.game_weeks;
 create table if not exists yahoo_data.game_weeks(
     display_name text,
-    game_id text,
+    game_key text,
     game_week text,
     game_week_end text,
     game_week_start text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
-    constraint inserted_at_game_week primary key(game_id, game_week, inserted_timestamp)
+    constraint inserted_at_game_week primary key(game_key, game_week, inserted_timestamp)
 );
+drop table yahoo_data.leagues;
 create table if not exists yahoo_data.leagues(
     allow_add_to_dl_extra_pos text,
     current_week text,
@@ -70,6 +74,7 @@ create table if not exists yahoo_data.leagues(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_league_key primary key(league_key, inserted_timestamp)
 );
+drop table yahoo_data.settings;
 create table if not exists yahoo_data.settings(
     cant_cut_list text,
     draft_pick_time text,
@@ -105,9 +110,11 @@ create table if not exists yahoo_data.settings(
     waiver_rule text,
     waiver_time text,
     waiver_type text,
+    league_premium_features text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_settings primary key(league_key, inserted_timestamp)
 );
+drop table yahoo_data.stat_modifiers;
 create table if not exists yahoo_data.stat_modifiers(
     league_key text,
     stat_id text,
@@ -115,6 +122,7 @@ create table if not exists yahoo_data.stat_modifiers(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_stat_mod primary key(league_key, stat_id, inserted_timestamp)
 );
+drop table yahoo_data.stat_groups;
 create table if not exists yahoo_data.stat_groups(
     group_abbr text,
     group_display_name text,
@@ -123,11 +131,13 @@ create table if not exists yahoo_data.stat_groups(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_stat_group primary key(league_key, group_abbr, inserted_timestamp)
 );
+drop table yahoo_data.stat_categories;
 create table if not exists yahoo_data.stat_categories(
     abbr text,
     display_name text,
     game_key text,
     is_enabled text,
+    enabled text,
     is_excluded_from_display text,
     is_only_display_stat text,
     league_key text,
@@ -137,8 +147,9 @@ create table if not exists yahoo_data.stat_categories(
     stat_group text,
     stat_id text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
-    constraint inserted_at_stat_category primary key(league_key, stat_id, inserted_timestamp)
+    constraint inserted_at_stat_category primary key(game_key, stat_id, inserted_timestamp)
 );
+drop table yahoo_data.position_types;
 create table if not exists yahoo_data.position_types(
     display_name text,
     game_key text,
@@ -146,6 +157,7 @@ create table if not exists yahoo_data.position_types(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_position_type primary key(game_key, type, inserted_timestamp)
 );
+drop table yahoo_data.roster_positions;
 create table if not exists yahoo_data.roster_positions(
     abbreviation text,
     display_name text,
@@ -157,8 +169,9 @@ create table if not exists yahoo_data.roster_positions(
     position text,
     position_type text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
-    constraint inserted_at_roster_position primary key(league_key, position, inserted_timestamp)
+    constraint inserted_at_roster_position primary key(game_key, position, inserted_timestamp)
 );
+drop table yahoo_data.teams;
 create table if not exists yahoo_data.teams(
     clinched_playoffs text,
     draft_grade text,
@@ -192,6 +205,7 @@ create table if not exists yahoo_data.teams(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_team primary key(week, team_key, inserted_timestamp)
 );
+drop table yahoo_data.players;
 create table if not exists yahoo_data.players(
     editorial_player_key text,
     first_ascii_name text,
@@ -210,6 +224,7 @@ create table if not exists yahoo_data.players(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_player primary key(player_key, inserted_timestamp)
 );
+drop table yahoo_data.matchups;
 create table if not exists yahoo_data.matchups(
     is_consolation text,
     is_matchup_recap_available text,
@@ -238,13 +253,14 @@ create table if not exists yahoo_data.matchups(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_matchup primary key(week, team_1_key, team_2_key, inserted_timestamp)
 );
+drop table yahoo_data.rosters;
 create table if not exists yahoo_data.rosters(
     bye_weeks text,
     editorial_team_abr text,
     editorial_team_full_name text,
     editorial_team_key text,
     editorial_team_url text,
-    eligible_positions text[],
+    eligible_positions text,
     has_player_notes text,
     has_recent_player_notes text,
     injury_note text,
@@ -259,8 +275,9 @@ create table if not exists yahoo_data.rosters(
     team_key text,
     uniform_number text,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
-    constraint inserted_at_roster primary key(team_key, player_key, inserted_timestamp)
+    constraint inserted_at_rosters primary key(team_key, player_key, inserted_timestamp)
 );
+drop table yahoo_data.draft_results;
 create table if not exists yahoo_data.draft_results(
     pick text,
     round text,
@@ -270,6 +287,7 @@ create table if not exists yahoo_data.draft_results(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_draft_results primary key(player_key, inserted_timestamp)
 );
+drop table yahoo_data.player_draft_analysis;
 create table if not exists yahoo_data.player_draft_analysis(
     average_cost text,
     average_pick text,
@@ -284,6 +302,7 @@ create table if not exists yahoo_data.player_draft_analysis(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_player_draft_analysis primary key(player_key, inserted_timestamp)
 );
+drop table yahoo_data.player_pct_owned;
 create table if not exists yahoo_data.player_pct_owned(
     bye_weeks text,
     editorial_player_key text,
@@ -291,6 +310,7 @@ create table if not exists yahoo_data.player_pct_owned(
     editorial_team_full_name text,
     editorial_team_key text,
     editorial_team_url text,
+    eligible_positions text,
     first_ascii_name text,
     first_name text,
     full_name text,
@@ -318,6 +338,7 @@ create table if not exists yahoo_data.player_pct_owned(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_player_week_pctowned primary key(week, player_key, inserted_timestamp)
 );
+drop table yahoo_data.player_stats;
 create table if not exists yahoo_data.player_stats(
     league_key text,
     player_key text,
@@ -328,6 +349,7 @@ create table if not exists yahoo_data.player_stats(
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp,
     constraint inserted_at_player_week_stat primary key(week, player_key, stat_id, inserted_timestamp)
 );
+drop table yahoo_data.transactions;
 create table if not exists yahoo_data.transactions(
     faab_bid text,
     league_key text,

@@ -1,14 +1,14 @@
 import calendar
 import logging
 from collections import deque, namedtuple
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
 from typing import Any
 
 import psycopg
-from dateutil.rrule import MINUTELY, MO, MONTHLY, SA, SU, TH, TU, WEEKLY, rrule
+from dateutil.rrule import HOURLY, MO, MONTHLY, SA, SU, TH, TU, WEEKLY, rrule
 from psycopg import Connection, sql
 from pytz import timezone
 from yahoo_parser import YahooParseBase
@@ -44,7 +44,9 @@ class PipelineParameters:
 
     def __post_init__(self):
         self.current_season = (
-            self.current_timestamp.year if self.current_timestamp.month > 1 else self.current_timestamp.year - 1
+            self.current_timestamp.year
+            if self.current_timestamp.month > 1
+            else self.current_timestamp.year - 1
         )
         self.current_week = get_week(self.current_timestamp).week  # type: ignore
         self.team_key_list = get_team_key_list(self.league_key, num_teams=self.num_of_teams)
@@ -119,9 +121,9 @@ def define_pipeline_schedules(current_timestamp: datetime) -> tuple[str, str, st
     end_date = nfl_season[-2].week_end + timedelta(days=1)
 
     sunday_schedule = rrule(
-        freq=MINUTELY,
+        freq=HOURLY,
         dtstart=start_date,
-        interval=10,
+        interval=1,
         until=end_date,
         byweekday=SU,
         byhour=range(6, 23),
@@ -172,7 +174,8 @@ def get_labor_day(current_timestamp: date) -> date:
 
 @lru_cache
 def get_week(
-    current_timestamp: datetime, get_all_weeks: bool = False  # noqa: FBT001, FBT002
+    current_timestamp: datetime,
+    get_all_weeks: bool = False,  # noqa: FBT001, FBT002
 ) -> NFLWeek | list[NFLWeek]:
     current_date = current_timestamp.astimezone(timezone("America/Denver")).date()
     labor_day = get_labor_day(current_date)
@@ -181,13 +184,23 @@ def get_week(
 
     nfl_season = []
     for week in range(0, 18):
-        current_week_wednesday = labor_day + timedelta(days=((week * 7) + days_to_current_wednesday))
+        current_week_wednesday = labor_day + timedelta(
+            days=((week * 7) + days_to_current_wednesday)
+        )
         next_week_tuesday = labor_day + timedelta(days=((week * 7) + days_to_next_tuesday))
-        nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+        nfl_week = NFLWeek(
+            week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday
+        )
         nfl_season.append(nfl_week)
 
-        if current_date >= current_week_wednesday and current_date < next_week_tuesday and get_all_weeks is False:
-            nfl_week = NFLWeek(week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday)
+        if (
+            current_date >= current_week_wednesday
+            and current_date < next_week_tuesday
+            and get_all_weeks is False
+        ):
+            nfl_week = NFLWeek(
+                week=(week + 1), week_start=current_week_wednesday, week_end=next_week_tuesday
+            )
             logger.info(f"NFL Week {nfl_week}")
             return nfl_week
 
@@ -345,7 +358,9 @@ OFFSEASON_END_POINTS = [
     "get_league_offseason",
     "get_player",
 ]  # between march 1st and Labor Day
-BEGINNING_OF_WEEK_END_POINTS = ["get_league_matchup"]  # after the monday night game or the tuesday morning after
+BEGINNING_OF_WEEK_END_POINTS = [
+    "get_league_matchup"
+]  # after the monday night game or the tuesday morning after
 BEFORE_MAIN_SLATE_WEEKLY_END_POINTS = [
     "get_player_pct_owned",
     "get_roster",

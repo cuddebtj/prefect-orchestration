@@ -1,3 +1,4 @@
+-- DROP PROCEDURE yahoo_data.delete_duplicate_data();
 CREATE OR REPLACE PROCEDURE yahoo_data.delete_duplicate_data(schema_name text, table_name text)
   AS $$
   DECLARE
