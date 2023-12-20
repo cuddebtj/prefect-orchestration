@@ -126,7 +126,7 @@ def define_pipeline_schedules(current_timestamp: datetime) -> tuple[str, str, st
         interval=1,
         until=end_date,
         byweekday=SU,
-        byhour=range(6, 23),
+        byhour=range(6, 24),
     )
     weekly_schedule = rrule(
         freq=WEEKLY,
