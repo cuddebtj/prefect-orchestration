@@ -573,7 +573,7 @@ def data_to_db(
 
     if json_or_df == "json":
         schema_name = "yahoo_json"
-        columns = ["yahoo_json"]
+        columns = ["json_data"]
         logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
         copy_statement = """COPY {table_name} ({column_names})
         FROM STDIN"""
