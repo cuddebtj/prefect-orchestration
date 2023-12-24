@@ -310,8 +310,8 @@ def sleeper_flow(
         player_info, player_meta = parse_sleeper_player_info_data(player_info_resp, nfl_week.week)  # type: ignore
 
         db_params.table_name = "sleeper_player_projections"
-        for record in projection_data_resp:
-            data_to_db(record, db_params, "json", db_params.schema_name)
+        # for record in projection_data_resp:
+        data_to_db(projection_data_resp, db_params, "json", db_params.schema_name)
         db_params.table_name = "sleeper_player_info"
         data_to_db(player_info_resp, db_params, "json", db_params.schema_name)
 
