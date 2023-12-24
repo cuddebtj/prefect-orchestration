@@ -298,7 +298,7 @@ def sleeper_flow(
     else:
         logger.info("Database connection established.")
         db_params = DatabaseParameters(db_conn=db_conn, schema_name="public", table_name=None)
-        labor_day = get_labor_day(current_timestamp)
+        labor_day = get_labor_day(current_timestamp.date)
         season = labor_day.year
         nfl_week = get_week(current_timestamp)
         projection_data_resp = get_sleeper_player_projection_data(season, nfl_week.week)  # type: ignore
