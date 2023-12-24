@@ -58,3 +58,13 @@ create table if not exists yahoo_json.roster(
     yahoo_json jsonb,
     inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp
 ) WITH (fillfactor = 100);
+
+
+create table if not exists yahoo_json.sleeper_player_projections(
+    sleeper_json jsonb,
+    inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp
+) WITH (fillfactor = 100);
+create table if not exists yahoo_json.sleeper_player_info(
+    sleeper_json jsonb,
+    inserted_timestamp timestamp without time zone constraint inserted_at_constraint default current_timestamp
+) WITH (fillfactor = 100);

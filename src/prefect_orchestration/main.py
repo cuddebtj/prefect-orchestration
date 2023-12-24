@@ -26,8 +26,12 @@ from prefect_orchestration.modules.tasks import (
     get_endpoint_config,
     get_player_key_list,
     get_run_datetime,
+    get_sleeper_player_info_data,
+    get_sleeper_player_projection_data,
     get_yahoo_api_config,
     parse_response,
+    parse_sleeper_player_info_data,
+    parse_sleeper_player_projections_data,
     split_pipelines,
 )
 from prefect_orchestration.modules.utils import (
@@ -36,6 +40,8 @@ from prefect_orchestration.modules.utils import (
     PipelineParameters,
     chunk_to_twentyfive_items,
     define_pipeline_schedules,
+    get_labor_day,
+    get_week,
 )
 
 ENV_STATUS = None  # os.getenv("ENVIRONMENT", "local")
@@ -56,9 +62,7 @@ def get_configuration_and_split_pipelines(
 ) -> tuple[
     PipelineParameters,
     DatabaseParameters,
-    tuple[
-        list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None
-    ],
+    tuple[list[EndPointParameters], list[EndPointParameters] | None, list[EndPointParameters] | None],
 ]:
     logger = get_run_logger()  # type: ignore
     try:
@@ -223,15 +227,11 @@ def yahoo_flow(
             try:
                 for chunk_one, chunk_two, chunk_three in zipped_chunks:
                     if chunk_one:
-                        pipe_one = extract_transform_load(
-                            pipeline_params, db_params, chunk_one, yahoo_api_one
-                        )  # type: ignore
+                        pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                         pipelines.append(pipe_one)
 
                     if chunk_two:
-                        pipe_two = extract_transform_load(
-                            pipeline_params, db_params, chunk_two, yahoo_api_two
-                        )  # type: ignore
+                        pipe_two = extract_transform_load(pipeline_params, db_params, chunk_two, yahoo_api_two)  # type: ignore
                         pipelines.append(pipe_two)
 
                     if chunk_three:
@@ -260,9 +260,7 @@ def yahoo_flow(
             logger.info("YahooAPI objects created.")
 
             for chunk_one in pipeline_chunks[0]:
-                pipe_one = extract_transform_load(
-                    pipeline_params, db_params, chunk_one, yahoo_api_one
-                )  # type: ignore
+                pipe_one = extract_transform_load(pipeline_params, db_params, chunk_one, yahoo_api_one)  # type: ignore
                 pipelines.append(pipe_one)
 
             logger.info("Successfull ETL on yahoo data.")
@@ -275,15 +273,77 @@ def yahoo_flow(
         db_conn.close()  # type: ignore
 
 
+@flow(on_failure=[notify_discord_failure], on_cancellation=[notify_discord_cancellation])
+def sleeper_flow(
+    run_datetime: str = "",
+) -> bool:
+    logger = get_run_logger()  # type: ignore
+    current_timestamp = get_run_datetime(run_datetime)
+    try:
+        connection_string = SecretStr(
+            os.getenv("SUPABASE_CONN_PYTHON", "localhost")
+            if ENV_STATUS == "local"
+            else Secret.load("supabase-conn-python").get()  # type: ignore
+        )
+        db_conn = psycopg.connect(connection_string.get_secret_value())
+
+    except psycopg.DatabaseError as connection_error:
+        logger.exception(connection_error, exc_info=True, stack_info=True)
+        raise connection_error
+
+    except Exception as error:
+        logger.exception(error, exc_info=True, stack_info=True)
+        raise error
+
+    else:
+        logger.info("Database connection established.")
+        db_params = DatabaseParameters(db_conn=db_conn, schema_name="public", table_name=None)
+        labor_day = get_labor_day(current_timestamp)
+        season = labor_day.year
+        nfl_week = get_week(current_timestamp)
+        projection_data_resp = get_sleeper_player_projection_data(season, nfl_week.week)  # type: ignore
+        player_info_resp = get_sleeper_player_info_data()
+
+        projection_info, projection_player, projection_meta, projection_stats = parse_sleeper_player_projections_data(
+            projection_data_resp
+        )
+        player_info, player_meta = parse_sleeper_player_info_data(player_info_resp, nfl_week.week)  # type: ignore
+
+        db_params.table_name = "sleeper_player_projections"
+        for record in projection_data_resp:
+            data_to_db(record, db_params, "json", db_params.schema_name)
+        db_params.table_name = "sleeper_player_info"
+        data_to_db(player_info_resp, db_params, "json", db_params.schema_name)
+
+        db_params.table_name = "sleeper_player_projections_info"
+        data_to_db(projection_info, db_params, "df", db_params.schema_name)
+        db_params.table_name = "sleeper_player_projections_player"
+        data_to_db(projection_player, db_params, "df", db_params.schema_name)
+        db_params.table_name = "sleeper_player_projections_metadata"
+        data_to_db(projection_meta, db_params, "df", db_params.schema_name)
+        db_params.table_name = "sleeper_player_projections_stats"
+        data_to_db(projection_stats, db_params, "df", db_params.schema_name)
+        db_params.table_name = "sleeper_player_info"
+        data_to_db(player_info, db_params, "df", db_params.schema_name)
+        db_params.table_name = "sleeper_player_meatdata"
+        data_to_db(player_meta, db_params, "df", db_params.schema_name)
+
+        return True
+
+    finally:
+        db_conn.close()  # type: ignore
+
+
 if __name__ == "__main__":
     anchor_timezone = "America/Denver"
 
-    sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str = define_pipeline_schedules(
+    sunday_rrule_str, weekly_rrule_str, off_pre_rrule_str, once_wkly_rrule_str = define_pipeline_schedules(
         current_timestamp=datetime.now(tz=timezone("UTC"))
     )
     sunday_schedule = construct_schedule(rrule=sunday_rrule_str, timezone=anchor_timezone)
     weekly_schedule = construct_schedule(rrule=weekly_rrule_str, timezone=anchor_timezone)
     off_pre_schedule = construct_schedule(rrule=off_pre_rrule_str, timezone=anchor_timezone)
+    once_wkly_schedule = construct_schedule(rrule=once_wkly_rrule_str, timezone=anchor_timezone)
     sunday_flow = yahoo_flow.to_deployment(  # type: ignore
         name="sunday-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the regular-season.",
@@ -291,22 +351,30 @@ if __name__ == "__main__":
         parameters={"run_datetime": ""},
         tags=["yahoo", "sunday", "live"],
     )
-    weekly_flow = yahoo_flow.to_deployment(  # type: ignore
+    weekly_flow = yahoo_flow.to_deployment(
         name="weekly-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the post-season.",
         schedule=weekly_schedule,
         parameters={"run_datetime": ""},
         tags=["yahoo", "weekly"],
     )
-    off_pre_flow = yahoo_flow.to_deployment(  # type: ignore
+    off_pre_flow = yahoo_flow.to_deployment(
         name="off-pre-season-yahoo-flow",
         description="Export league data from Yahoo Fantasy Sports API to Supabase during the off-season.",
         schedule=off_pre_schedule,
         parameters={"run_datetime": ""},
         tags=["yahoo", "preseason", "offseason"],
     )
+    sleeper_data_extraction = sleeper_flow.to_deployment(
+        name="sleeper-data-extraction-sleeper-flow",
+        description="Export player data from Sleeper API to Supabase weekly during the season.",
+        schedule=once_wkly_schedule,
+        parameters={"run_datetime": ""},
+        tags=["sleeper", "weekly"],
+    )
     serve(
         sunday_flow,  # type: ignore
-        weekly_flow,  # type: ignore
-        off_pre_flow,  # type: ignore
+        weekly_flow,
+        off_pre_flow,
+        sleeper_data_extraction,
     )

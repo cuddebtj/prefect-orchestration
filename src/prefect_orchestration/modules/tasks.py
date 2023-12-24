@@ -2,9 +2,11 @@ import io
 import json
 import math
 import os
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
+import polars as pl
 import psycopg
 from polars import DataFrame
 from prefect import get_run_logger, task
@@ -59,9 +61,7 @@ def get_run_datetime(run_datetime: str) -> datetime:
 @task
 def determine_end_points(pipeline_params: PipelineParameters) -> set[str]:
     logger = get_run_logger()
-    labor_day = get_labor_day(
-        pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date()
-    )
+    labor_day = get_labor_day(pipeline_params.current_timestamp.astimezone(timezone("America/Denver")).date())
     nfl_season = get_week(pipeline_params.current_timestamp, get_all_weeks=True)
     current_week = pipeline_params.current_week
     nfl_start_date = nfl_season[0].week_start
@@ -204,6 +204,183 @@ def split_pipelines(
 
 
 @task
+def get_sleeper_player_projection_data(season: int | str, week: int | str) -> Sequence[dict[Any, Any]]:
+    import requests
+
+    logger = get_run_logger()
+
+    sleeper_base_url = "https://api.sleeper.app/"
+    sleeper_projections_url = (
+        sleeper_base_url
+        + f"/projections/nfl/{season}/{week}"
+        + "?season_type=regular&position[]=DB&position[]=DEF"
+        + "&position[]=DL&position[]=FLEX&position[]=IDP_FLEX"
+        + "&position[]=K&position[]=LB&position[]=QB"
+        + "&position[]=RB&position[]=REC_FLEX&position[]=SUPER_FLEX"
+        + "&position[]=TE&position[]=WR&position[]=WRRB_FLEX&order_by=ppr"
+    )
+
+    logger.info(f"Getting sleeper player projections for {season} and {week}.")
+    with requests.Session() as session:
+        try:
+            response = session.get(sleeper_projections_url)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as err:
+            logger.exception(f"Error with sleeper request:\n\n{err}\n\n", exc_info=True)
+            raise err
+
+        except requests.exceptions.RequestException as err:
+            logger.exception(f"Error with sleeper request:\n\n{err}\n\n", exc_info=True)
+            raise err
+
+
+@task
+def parse_sleeper_player_projections_data(
+    response_data: Sequence[dict[str, Any]]
+) -> tuple[DataFrame, DataFrame, DataFrame, DataFrame]:
+    info_df = pl.DataFrame()
+    player_df = pl.DataFrame()
+    player_metadata_df = pl.DataFrame()
+    stats_df = pl.DataFrame()
+
+    response_data = sorted(response_data, key=lambda player_row: player_row["player_id"], reverse=True)
+    for player_row in response_data:
+        player_row["stats"].update(
+            {
+                "player_id": player_row["player_id"],
+                "week": player_row["week"],
+            }
+        )
+        player_row["player"].update(
+            {
+                "player_id": player_row["player_id"],
+                "week": player_row["week"],
+            }
+        )
+        if player_row["player"]["metadata"] is None:
+            player_row["player"]["metadata"] = {
+                "player_id": player_row["player_id"],
+                "week": player_row["week"],
+            }
+        else:
+            player_row["player"]["metadata"].update(
+                {
+                    "player_id": player_row["player_id"],
+                    "week": player_row["week"],
+                }
+            )
+
+        info_dict = {
+            "opponent": player_row["opponent"],
+            "company": player_row["company"],
+            "team": player_row["team"],
+            "player_id": player_row["player_id"],
+            "game_id": player_row["game_id"],
+            "sport": player_row["sport"],
+            "season_type": player_row["season_type"],
+            "season": player_row["season"],
+            "week": player_row["week"],
+            "category": player_row["category"],
+            "date": player_row["date"],
+        }
+        player_dict = player_row["player"].copy()
+        player_metadata_dict = player_row["player"]["metadata"].copy()
+
+        final_player_metadata_dict = {}
+        for key in player_metadata_dict.keys():
+            if "injury_override_" in key:
+                new_key = key[:15]
+                new_key_value = key[16:]
+                final_player_metadata_dict[new_key] = new_key_value
+            else:
+                final_player_metadata_dict[key] = player_metadata_dict[key]
+
+        stats_dict = player_row["stats"].copy()
+
+        del player_dict["metadata"]
+
+        info_row_df = pl.from_dict(info_dict)
+        info_df = pl.concat([info_row_df, info_df], how="diagonal_relaxed")
+
+        player_row_df = pl.from_dict(player_dict)
+        player_df = pl.concat([player_row_df, player_df], how="diagonal_relaxed")
+
+        player_metadata_row_df = pl.from_dict(final_player_metadata_dict)
+        player_metadata_df = pl.concat([player_metadata_row_df, player_metadata_df], how="diagonal_relaxed")
+
+        stats_row_df = pl.from_dict(stats_dict)
+        stats_df = pl.concat([stats_row_df, stats_df], how="diagonal_relaxed")
+
+    return info_df, player_df, player_metadata_df, stats_df
+
+
+@task
+def get_sleeper_player_info_data() -> dict[Any, Any]:
+    import requests
+
+    logger = get_run_logger()
+
+    player_info_url = "https://api.sleeper.app/v1/players/nfl"
+
+    logger.info("Getting sleeper player info.")
+    with requests.Session() as session:
+        try:
+            response = session.get(player_info_url)
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.HTTPError as err:
+            logger.exception(f"Error with sleeper request:\n\n{err}\n\n", exc_info=True)
+            raise err
+
+        except requests.exceptions.RequestException as err:
+            logger.exception(f"Error with sleeper request:\n\n{err}\n\n", exc_info=True)
+            raise err
+
+
+@task
+def parse_sleeper_player_info_data(response_data: dict[str, Any], week: str | int) -> tuple[DataFrame, DataFrame]:
+    info_dict = []
+    metadata_dict = []
+    for key, value in response_data.items():
+        value.update({"sleeper_id": key})
+        value.update({"week": str(week)})
+        value["fantasy_positions"] = (
+            ", ".join(value["fantasy_positions"])
+            if isinstance(value["fantasy_positions"], list)
+            else value["fantasy_positions"]
+        )
+
+        if value.get("metadata", None) is None:
+            value["metadata"] = {"sleeper_id": key, "week": str(week)}
+        else:
+            value["metadata"].update({"sleeper_id": key, "week": str(week)})
+
+        metadata = value["metadata"].copy()
+
+        del value["metadata"]
+
+        final_metadata_dict = {}
+        for meta_key in metadata.keys():
+            if "injury_override_" in meta_key:
+                new_key = meta_key[:15]
+                new_key_value = meta_key[16:]
+                final_metadata_dict[new_key] = new_key_value
+            else:
+                final_metadata_dict[meta_key] = metadata[meta_key]
+
+        metadata_dict.append(final_metadata_dict)
+        info_dict.append(value)
+
+    info_df = pl.from_dicts(info_dict, infer_schema_length=10000)
+    meta_df = pl.from_dicts(metadata_dict, infer_schema_length=10000)
+
+    return info_df, meta_df
+
+
+@task
 def extractor(
     pipeline_params: PipelineParameters,
     end_point_params: EndPointParameters,
@@ -254,9 +431,7 @@ def extractor(
         return resp, parser
 
     elif end_point_params.end_point == "get_league_matchup":
-        resp, _ = yahoo_api.get_league_matchup(
-            league_key=pipeline_params.league_key, week=pipeline_params.current_week
-        )
+        resp, _ = yahoo_api.get_league_matchup(league_key=pipeline_params.league_key, week=pipeline_params.current_week)
         parser = LeagueParser(
             response=resp,  # type: ignore
             season=pipeline_params.current_season,
@@ -389,6 +564,7 @@ def data_to_db(
     resp_data: dict | DataFrame,
     db_params: DatabaseParameters,
     json_or_df: Literal["json", "df"],
+    schema_name: str | None = None,
 ) -> None:
     """
     Copy data into postgres
@@ -399,27 +575,25 @@ def data_to_db(
         schema_name = "yahoo_json"
         columns = ["yahoo_json"]
         logger.info(f"Json load to table {schema_name}.{db_params.table_name}.")
-        copy_statement = "COPY {table_name} ({column_names}) FROM STDIN"
+        copy_statement = """COPY {table_name} ({column_names})
+        FROM STDIN"""
 
         file_buffer = io.StringIO()  # type: ignore
         json.dump(resp_data, file_buffer)  # type: ignore
         file_buffer.seek(0)
 
     elif json_or_df == "df":
-        schema_name = "yahoo_data"
+        schema_name = "yahoo_data" if not schema_name else schema_name
         columns = resp_data.columns  # type: ignore
         logger.info(f"Dataframe CSV load to table {schema_name}.{db_params.table_name}.")
-        copy_statement = "COPY {table_name} ({column_names}) FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"
+        copy_statement = """COPY {table_name} ({column_names})
+        FROM STDIN WITH (FORMAT csv, HEADER true, DELIMITER ',')"""
 
         file_buffer = io.BytesIO()
-        resp_data.write_csv(
-            file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always"
-        )  # type: ignore
+        resp_data.write_csv(file_buffer, has_header=True, separator=",", line_terminator="\n", quote_style="always")  # type: ignore
         file_buffer.seek(0)
 
-    set_delete_statement = sql.SQL(
-        "CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});"
-    ).format(
+    set_delete_statement = sql.SQL("CALL yahoo_data.delete_duplicate_data({schema_name}, {table_name});").format(
         schema_name=sql.Literal(schema_name),
         table_name=sql.Literal(db_params.table_name),
     )
